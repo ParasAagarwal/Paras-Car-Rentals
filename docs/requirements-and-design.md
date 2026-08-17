@@ -107,3 +107,26 @@ the last:
 it's set by automation, not a formula, since it needs to combine
 `Base_Price__c` with discounts/adjustments that aren't pure formula
 inputs.
+
+## Cross-object lookup filters
+
+**Requirement:** Several lookups need to be narrowed to only
+relationally-valid records, so users can't manually link unrelated
+records together (wrong customer's review, a car that's already
+rented, a stale coupon).
+
+**Solution:** Declarative lookup filters, no automation needed:
+
+| Field | Filter | Prevents |
+|---|---|---|
+| `Booking__c.Car__c` | `Car__c.Availability_Status__c = 'Available'` | Double-booking a car that's rented or in maintenance |
+| `Booking__c.Coupon_Code__c` | `Coupon_Code__c.Is_Active__c = true` | Applying an expired/inactive coupon |
+| `Review__c.Booking__c` | Booking's `Customer__c` = the review's `Customer__c` | A customer reviewing someone else's booking |
+| `Case.Review_ID__c` | Review's `Booking__c` = Case's `Related_Booking__c`, and Review's `Customer__c` = Case's `ContactId` | Linking a case to an unrelated review |
+
+All are `isOptional = false` (hard filters) except `Booking__c.Car__c`,
+which is `isOptional = true` — a warning the user can override, not a
+hard block. That's inconsistent with the stated requirement ("must only
+allow... currently available" cars) and the pattern used everywhere
+else in this list; worth revisiting since a double-booking is the
+costliest failure mode of the four.
