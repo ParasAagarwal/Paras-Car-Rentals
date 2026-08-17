@@ -130,3 +130,20 @@ hard block. That's inconsistent with the stated requirement ("must only
 allow... currently available" cars) and the pattern used everywhere
 else in this list; worth revisiting since a double-booking is the
 costliest failure mode of the four.
+
+## Transmission / fuel type dependency
+
+**Requirement:** Only valid transmission/fuel combinations should be
+selectable on a car — e.g. `Biodiesel` only makes sense for a `Manual`
+car.
+
+**Solution:** A picklist field dependency: `Car__c.Fuel_Type__c` is
+controlled by `Car__c.Transmission_Type__c`.
+
+| Transmission Type | Available Fuel Types |
+|---|---|
+| `Automatic` | Electric, Hybrid, Petrol, Diesel |
+| `Manual` | Biodiesel, Gasoline, Petrol, Diesel |
+
+Declarative field dependency, not a validation rule — invalid
+combinations are unselectable rather than rejected after the fact.
