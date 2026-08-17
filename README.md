@@ -1,8 +1,33 @@
-# Salesforce DX Project
+# Car Rentals
 
-Salesforce DX is a development approach that brings source-driven development, team collaboration, and continuous integration to the Salesforce Platform. Instead of working directly in an org through a web browser, you work with metadata as source files in a local DX project, track changes in version control, and deploy through automated processes.
+A personal Salesforce project implementing a car rental management data
+model — vehicle inventory, bookings, payments, reviews, coupons, and
+support cases — built as a standard Salesforce DX project.
 
-This project template gets you started with the tools and structure you need to build Salesforce applications using source control, scratch orgs, and the Salesforce CLI.
+## Data Model
+
+Core custom objects, plus extensions to standard `Contact` and `Case`:
+
+| Object | Purpose | Key relationships |
+|---|---|---|
+| **Car__c** | Vehicle inventory: make, model, year, rental rate, mileage limit, service dates, real-time availability | Master-Detail parent of `Car_Image__c`; looked up from `Booking__c`, `Case.Related_Car__c` |
+| **Booking__c** | Customer reservations: car, customer, rental period, status (Pending/Confirmed/Cancelled) | Lookup to `Car__c` and `Contact` (both required), `Coupon_Code__c` (optional, active coupons only); Master-Detail parent of `Payment_Transaction__c`; looked up from `Review__c`, `Case.Related_Booking__c` |
+| **Payment_Transaction__c** | Payment/refund/deposit ledger per booking | Master-Detail child of `Booking__c` |
+| **Car_Image__c** | Vehicle photos, with a primary-image flag | Master-Detail child of `Car__c` |
+| **Review__c** | Customer ratings/comments per booking | Lookup to `Booking__c` and `Contact`; looked up from `Case.Review_ID__c` |
+| **Coupon_Code__c** | Discount codes: expiry, usage limits, manager approval for large discounts | Looked up from `Booking__c` |
+| **LogEvent__c** | Technical log of Flow/Apex errors and warnings | Standalone |
+| **Contact** (standard) | Customer record, extended with `Total_Lifetime_Spending__c` and `Total_Number_Of_Booking__c` | |
+| **Case** (standard) | Support cases, extended with `Related_Booking__c`, `Related_Car__c`, `Review_ID__c`, `Resolution_Notes__c` | |
+
+`Total_Bookings_Value__c` (Car), `Total_Lifetime_Spending__c` /
+`Total_Number_Of_Booking__c` (Contact), and `Average_Rating__c` /
+`Current_Average__c` (Car) are plain editable fields, not native roll-up
+summaries — their parent relationships are Lookups rather than
+Master-Detail, so these are meant to be kept in sync by Flow/Apex.
+
+Access is currently controlled by a single **Car On Rental** permission
+set (admin use).
 
 ## Prerequisites
 
