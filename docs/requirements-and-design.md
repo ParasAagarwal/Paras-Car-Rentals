@@ -60,3 +60,50 @@ relationship — unlike the plain editable aggregate fields on `Car__c`
 and `Contact` (`Total_Bookings_Value__c`, `Total_Lifetime_Spending__c`,
 etc.), which sit behind Lookup relationships and so can't use native
 roll-ups; those still need Flow/Apex to stay in sync.
+
+## Car service countdown
+
+**Requirement:** Show how many days remain until a car's next scheduled
+service, so overdue vehicles are obvious.
+
+**Solution:** `Car__c.Service_Countdown__c`, a Number formula:
+`Next_Service_Date__c - TODAY()`. Positive = days remaining, negative =
+overdue — a plain date subtraction was enough, no automation needed.
+
+## Dynamic car image display
+
+**Requirement:** Show a car's photo where available, and a consistent
+fallback where it isn't, rather than a broken image or blank space.
+
+**Solution:** `Car__c.Car_Image__c`, a Text formula using `IMAGE()`:
+returns `IMAGE(Primary_Image_Url__c, Name, 350, 400)` when
+`Primary_Image_Url__c` is populated, otherwise falls back to the
+`CarOnRentalLogo` static resource (the same asset used for the app's
+brand logo). Because `Primary_Image_Url__c` points at an external image
+host, that host also had to be added as a CSP Trusted Site
+(`Car_Images_API`, `img-src` only) — without it Lightning blocks the
+image request outright.
+
+## Booking pricing chain
+
+**Requirement:** Booking price, security deposit, applied discount, and
+outstanding balance all need to be visible on the booking without manual
+calculation, and the security deposit percentage must stay
+admin-configurable.
+
+**Solution:** A chain of formula fields on `Booking__c`, each building on
+the last:
+
+| Field | Formula | Notes |
+|---|---|---|
+| `Booking_Duration__c` | `End_Date_Time__c - Start_Date_Time__c` | Days, as a plain Number |
+| `Base_Price__c` | `Car__r.Rental_Rate_Per_Day__c * Booking_Duration__c` | Cost before discounts/fees |
+| `Security_Deposit__c` | `Final_Booking_Price__c * (VALUE($CustomMetadata.System_Thresholds__mdt.Security_Deposit_Percentage.Value__c) / 100)` | Reads the admin-configurable threshold — see above |
+| `Booking_Balance__c` | `Final_Booking_Price__c - Total_Paid_Amount__c` | Outstanding amount, using the roll-up above |
+| `Coupen_Discount__c` | `Coupon_Code__r.Discount_Percentage__c` | Surfaces the applied coupon's discount for visibility |
+
+`Final_Booking_Price__c` itself is a plain editable Currency field
+("based on applying discount and adjustment" per its description) —
+it's set by automation, not a formula, since it needs to combine
+`Base_Price__c` with discounts/adjustments that aren't pure formula
+inputs.
