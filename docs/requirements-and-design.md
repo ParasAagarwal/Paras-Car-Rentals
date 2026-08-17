@@ -147,3 +147,18 @@ controlled by `Car__c.Transmission_Type__c`.
 
 Declarative field dependency, not a validation rule — invalid
 combinations are unselectable rather than rejected after the fact.
+
+## Car and Booking field history tracking
+
+**Requirement:** Maintain an audit trail of changes to key financial and
+operational fields — pricing and availability on the car, scheduling and
+status on the booking.
+
+**Solution:** Field History Tracking, enabled at the object level
+(`enableHistory`) on both `Car__c` and `Booking__c`, with `trackHistory`
+turned on for:
+
+| Object | Fields tracked |
+|---|---|
+| `Car__c` | `Rental_Rate_Per_Day__c`, `Availability_Status__c` |
+| `Booking__c` | `Start_Date_Time__c`, `End_Date_Time__c`, `Status__c`, `Payment_Status__c` |
