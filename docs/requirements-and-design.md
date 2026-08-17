@@ -162,3 +162,42 @@ turned on for:
 |---|---|
 | `Car__c` | `Rental_Rate_Per_Day__c`, `Availability_Status__c` |
 | `Booking__c` | `Start_Date_Time__c`, `End_Date_Time__c`, `Status__c`, `Payment_Status__c` |
+
+## Validation rules
+
+**Requirement:** Enforce data-integrity rules that a lookup filter or
+field dependency can't express — cross-field status consistency, date
+logic, and threshold-based limits — with a clear error message instead
+of silent bad data.
+
+**Solution:** Nine validation rules across three objects:
+
+| Object | Rule | Blocks saving when |
+|---|---|---|
+| `Booking__c` | `Booking_Completion_Check` | Status = Completed and Payment Status ≠ Paid |
+| `Booking__c` | `Check_Booking_and_Payment_Status` | Status = Confirmed and Payment Status = Pending |
+| `Booking__c` | `Check_Mandatory_Cancellation_Reason` | Status = Cancelled and Cancellation Reason is blank |
+| `Booking__c` | `Check_Future_Start_Date` | Start Date is in the past, on create or whenever it's changed |
+| `Booking__c` | `Check_Booking_Dates` | Start Date is after End Date |
+| `Booking__c` | `Check_Cancellation_After_Start` | Status is set to Cancelled and Start Date has already passed |
+| `Review__c` | `Check_Review_Range` | Rating is outside 1–5 |
+| `Coupon_Code__c` | `Check_Expiration_Date_for_Coupon` | Expiration Date is in the past, on create or whenever it's changed |
+| `Coupon_Code__c` | `Check_Maximum_Discount_Limit` | Discount Percentage exceeds the `Max_Coupon_Code_Discount` threshold |
+
+`Check_Future_Start_Date` and `Check_Expiration_Date_for_Coupon` both
+fire on `ISCHANGED(...)` as well as `ISNEW()` — broader than their
+stated requirements ("new bookings" / "new coupon codes"), which also
+blocks editing an existing record's date into the past. Deliberate and
+reasonable, just wider than the literal spec.
+
+**Known bug:** `Check_Maximum_Discount_Limit`'s formula is
+`Discount_Percentage__c > VALUE($CustomMetadata.System_Thresholds__mdt.Max_Coupon_Code_Discount.Value__c)/100`.
+`Discount_Percentage__c` is a `Percent` field, so a 20% discount is
+represented as `20`, not `0.20` — matching how the threshold itself is
+stored (`Max_Coupon_Code_Discount.Value__c = 20`) and how it's used
+correctly elsewhere (`Coupen_Discount__c` assigns the percent field
+directly, no conversion). Dividing the threshold by `100` here turns 20
+into 0.2, so the rule effectively blocks almost any discount ≥ 1%, not
+just ones over the 20% limit. Should be
+`Discount_Percentage__c > VALUE($CustomMetadata.System_Thresholds__mdt.Max_Coupon_Code_Discount.Value__c)`
+with no division. Needs a fix in the org.
