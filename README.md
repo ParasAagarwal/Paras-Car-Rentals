@@ -29,6 +29,10 @@ Master-Detail, so these are meant to be kept in sync by Flow/Apex.
 Access is currently controlled by a single **Car On Rental** permission
 set (admin use).
 
+See [docs/requirements-and-design.md](docs/requirements-and-design.md)
+for the business requirement behind each non-trivial feature and why it
+was built that way.
+
 ## Prerequisites
 
 Before you start, make sure you have:
