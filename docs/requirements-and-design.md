@@ -201,3 +201,30 @@ into 0.2, so the rule effectively blocks almost any discount ≥ 1%, not
 just ones over the 20% limit. Should be
 `Discount_Percentage__c > VALUE($CustomMetadata.System_Thresholds__mdt.Max_Coupon_Code_Discount.Value__c)`
 with no division. Needs a fix in the org.
+
+## Case categorization (support processes & record types)
+
+**Requirement:** Support reps need to categorize a case into one of
+three distinct issue types (Booking Inquiry, Maintenance Request,
+Review Issue), each following its own status lifecycle, and each
+prompting only the Type/Reason options relevant to that category.
+
+**Solution:** Three Business Processes — `Booking Inquiry`,
+`Maintenance Request`, `Review Issue` — all sharing the same status
+lifecycle (`New` → `Working` → `Escalated` → `Closed`, `New` default),
+paired with three matching Record Types that restrict Case's standard
+`Type` and `Reason` picklists to a category-relevant subset:
+
+| Record Type | Type options | Reason options |
+|---|---|---|
+| Booking Inquiry | Booking Problem, Payments, Questions, Other | Customer Error, System Issue, Other |
+| Maintenance Request | Accident, Breakdown, Damage, Other | Mechanical Failure, Vehicle Condition, Other |
+| Review Issue | Negative Review, Customer Feedback, Other | Service Failure, Policy Clarification, Other |
+
+All three record types also restrict `Origin` to Email/Phone/Web and
+`Priority` to Low/Medium/High (Medium default) — the same for every
+category, not part of the categorization logic itself.
+
+`Type` and `Reason` are standard Case picklists with no local
+`valueSet` in their own field metadata — the per-category restriction
+lives entirely in each Record Type's `picklistValues`, not on the field.

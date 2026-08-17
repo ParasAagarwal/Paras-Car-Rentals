@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Booking_Inquiry</fullName>
+    <active>true</active>
+    <businessProcess>Booking Inquiry</businessProcess>
+    <label>Booking Inquiry</label>
+    <picklistValues>
+        <picklist>Origin</picklist>
+        <values>
+            <fullName>Email</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Phone</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Web</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Priority</picklist>
+        <values>
+            <fullName>High</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Low</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Medium</fullName>
+            <default>true</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Reason</picklist>
+        <values>
+            <fullName>Customer Error</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Other</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>System Issue</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Type</picklist>
+        <values>
+            <fullName>Booking Problem</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Other</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Payments</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Questions</fullName>
+            <default>false</default>
+        </values>
+    </picklistValues>
+</RecordType>
