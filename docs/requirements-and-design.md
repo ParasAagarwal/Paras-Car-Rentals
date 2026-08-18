@@ -389,3 +389,63 @@ Likely a side effect of a scoped "retrieve source in manifest" action in
 VS Code. Left as retrieved rather than reverted unilaterally — worth
 deciding whether the manifest should go back to broad wildcards or stay
 as an explicit, intentionally-scoped list going forward.
+
+## Trigger handling & logging framework
+
+**Source: not custom-built.** This is Salesforce's own open-source
+[**apex-recipes**](https://github.com/trailheadapps/apex-recipes)
+sample repo, installed as a package rather than written from scratch —
+`TriggerHandler.cls`'s header credits Kevin O'Hara's original
+[`sfdc-trigger-framework`](https://github.com/kevinohara80/sfdc-trigger-framework)
+as its base, which apex-recipes then extends. Confirmed by field
+manageability too: `Metadata_Driven_Trigger__mdt`'s fields are
+`SubscriberControlled` — i.e. package-owned, not org-authored.
+
+**The problem it solves.** Two recurring pain points in any
+non-trivial Salesforce org:
+
+1. **Trigger sprawl.** Salesforce best practice is one trigger per
+   object, but business logic still needs to be split across multiple
+   focused handler classes, run in a defined order, and be
+   individually toggleable — without a redeploy every time you need to
+   turn one off.
+2. **Logging that survives failure.** A `System.debug` or a normal DML
+   log record is useless for diagnosing a failed transaction — if the
+   transaction rolls back, so does the log you tried to write inside
+   it. You need a way to record *what happened* that isn't undone by
+   the failure that made you want to log it in the first place.
+
+**How it works, piece by piece:**
+
+| Component | Role |
+|---|---|
+| `TriggerHandler` | Base class every handler extends. Routes to `beforeInsert()`/`afterUpdate()`/etc., guards against recursive-trigger infinite loops via a per-class loop counter, and supports bypassing a handler by name at runtime. |
+| `MetadataTriggerHandler` + `MetadataTriggerService` | A single dispatcher, invoked from one `.trigger` per object, that queries `Metadata_Driven_Trigger__mdt` for which handler classes apply to that object, instantiates them in `Execution_Order__c` sequence, and runs them — so adding, removing, reordering, or disabling business logic for an object is a custom metadata edit, not an Apex deployment. |
+| `Metadata_Driven_Trigger__mdt` | One record per (object, handler class) pair: `Object__c` (which SObject), `Class__c` (which handler), `Execution_Order__c` (run order), `Enabled__c` (on/off switch). |
+| `Disabled_For__mdt` | Per-user kill switch: a record referencing a `Metadata_Driven_Trigger__mdt` plus a `User_Email__c`. `MetadataTriggerService` excludes that handler for that one user (matched against `UserInfo.getUsername()`) — e.g. muting a handler for an integration user or a specific tester without touching anyone else. |
+| `Log`, `LogMessage`, `LogSeverity` | The logging API surface: `Log.get().<severity>(message)` builds a `LogMessage` (auto-attaching Quiddity and Request ID) and buffers it for publish. |
+| `Log__e` (Platform Event) | Why this survives rollbacks: platform events are published outside the current transaction's rollback boundary, so even if the transaction that logged the error fails and rolls back, the `Log__e` it published is not undone. |
+| `LogTrigger` → `LogTriggerHandler` | Listens for the platform event and, in `afterInsert`, converts each `Log__e` into a durable `LogEvent__c` record — the object this project already had (`docs` entry near the top of this file) for storing Flow/Apex error and warning messages. |
+| `errorPanel` / `ldsUtils` (LWC) | The front-end half of the same philosophy: `ldsUtils.reduceErrors()` normalizes Lightning Data Service / Apex error shapes (which vary in structure) into a plain string array; `errorPanel` renders them consistently instead of every component inventing its own error UI. |
+| `TestHelper`, `TestDouble` | Testing-quality-of-life utilities bundled with the framework: `TestHelper` gets a class's runtime type name (useful for dynamic instantiation tests); `TestDouble` is a fluent `StubProvider` for mocking dependencies in Apex unit tests, so handler classes can be tested in isolation. |
+
+**Current wiring status — infrastructure, not yet load-bearing.** Only
+the logging half is actually active: `LogTrigger` is live and feeds
+`LogEvent__c`. No `Metadata_Driven_Trigger__mdt` records exist yet, so
+`MetadataTriggerHandler` isn't dispatching to anything — none of this
+project's own objects (`Booking__c`, `Car__c`, etc.) have a trigger
+wired through it yet. It's installed and ready, not yet in the
+critical path.
+
+**Is it worth keeping?** Yes. It's a maintained, Salesforce-authored
+reference implementation of two problems most orgs eventually solve
+badly on their own (trigger ordering/recursion bugs, and logs that
+vanish exactly when you need them — on the failure path). Adopting it
+now, before there's a second trigger handler competing for the same
+object, is cheaper than retrofitting it later. The one honest caveat:
+at the current project size, the metadata-driven dispatch layer
+(`MetadataTriggerHandler`/`Metadata_Driven_Trigger__mdt`) is more
+machinery than is needed until a second business-object trigger
+actually shows up — reasonable to have in place as scaffolding, but
+there's no urgency to populate `Metadata_Driven_Trigger__mdt` records
+until that happens.
