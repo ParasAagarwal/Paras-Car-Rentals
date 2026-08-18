@@ -287,5 +287,105 @@ related list.
 **Gap:** Key Car Info only shows `Car__r.Name`, `Rental_Rate_Per_Day__c`,
 and `Car_Family__c`. The requirement explicitly calls for transmission
 type and fuel type too (`Car__r.Transmission_Type__c`,
-`Car__r.Fuel_Type__c`), and neither is on the page. Worth adding next
-time you're in App Builder.
+`Car__r.Fuel_Type__c`), and neither is on the page — still true as of
+this retrieval; this page picked up an unrelated tweak (`Car__c` added,
+`Payment_Status__c` reordered) but not this fix. Worth adding next time
+you're in App Builder.
+
+## Security & sharing model
+
+**Requirement:** Enforce separation of duties between day-to-day
+Representatives and their Managers — least-privilege by default, with
+Managers getting broader access without needing records manually
+shared with them.
+
+**Solution:** A profile + permission set pair, layered with role
+hierarchy and sharing rules. (Documented from the owner's description
+and screenshots, not a field-by-field metadata read.)
+
+**Profile & permission set.** `Car Rental Representative` (cloned from
+Standard User) is the baseline profile, restricted to the Car On Rental
+app only, with Setup/wrench-menu access removed and record type
+assignment scoped to it. `Rental Manager Permissions` is a permission
+set layered on top for users in the Manager role, granting the
+additional access below rather than duplicating a whole second profile.
+
+**Object-level permissions — Representative profile:**
+
+| Object | Read | Create | Edit | Delete |
+|---|---|---|---|---|
+| Contact (Customer) | Yes | Yes | Yes | |
+| Case | Yes | Yes | Yes | |
+| Car | Yes | | Yes | |
+| Booking | Yes | Yes | Yes | |
+| Payment Transaction | Yes | Yes | | |
+| Car Image | Yes | Yes | Yes | Yes |
+| LogEvent | Yes | Yes | | |
+| Coupon Code | Yes | | Yes | |
+| Review | Yes | Yes | Yes | |
+
+**Object-level permissions — additional, via Rental Manager Permissions:**
+
+| Object | Read | Create | Edit | Delete |
+|---|---|---|---|---|
+| Car | | Yes | | |
+| Payment Transaction | | | Yes | Yes |
+| LogEvent | | | | Yes |
+| Coupon Code | | Yes | | Yes |
+
+So a Manager can create Cars (Reps can't), fully manage Payment
+Transaction and LogEvent records including deletion, and fully manage
+Coupon Codes — all restricted for Reps.
+
+**Field-level security:** the Representative profile has read access
+revoked on `Car__c.Total_Booked_Value` (the only field-level
+restriction called out); the Rental Manager Permissions set grants Read
++ Edit on all `Car__c` fields, overriding that for Managers.
+
+**Sharing model (org-wide defaults):**
+
+| Object | Default access |
+|---|---|
+| Case | Private |
+| Booking | Private |
+| Car | Public Read Only |
+| Contact | Public Read/Write |
+| Coupon Code | Public Read/Write |
+| LogEvent | Public Read/Write |
+| Payment Transaction, Car Image | Not set directly — inherit from parent (Booking, Car) via Master-Detail |
+
+Grant Access Using Hierarchies is on for all of these, so a role's
+managers automatically see what their reports own.
+
+**Role hierarchy:** `CEO` (top) → `Supervisor` → `Representative Agent`.
+One user was assigned each of the Supervisor and Representative Agent
+roles; Rental Manager Permissions was assigned to the Supervisor-role
+user. Because Booking and Case are Private with hierarchy access on,
+this alone gives Supervisors automatic view/edit access to their
+reports' Bookings and Cases — no manual sharing needed.
+
+**Criteria-based sharing rules:**
+
+| Object | Rule | Shares with | Access | When |
+|---|---|---|---|---|
+| `Car__c` | `Share_Record_With_Fleet_Team` | Fleet Management Team (public group) | Edit | `Availability_Status__c` = Under Maintenance or Out of Service |
+| `Booking__c` | `Share_Record_With_Marketing_Team` | Marketing Team (public group) | Read | `Post_Booking_Completion_Audit__c` = true |
+
+Both match their stated requirements exactly — Fleet gets edit access
+the moment a car needs service, Marketing gets read-only access only
+after a booking is fully audited.
+
+**Retrieval gap:** none of the object metadata in this repo has a
+`<sharingModel>` element yet for any object — the org-wide default
+settings above (Private/Public Read Only/Public Read-Write) haven't
+been retrieved into source form. The behavior is presumably live in the
+org already; this repo just doesn't reflect it yet. Worth a
+`CustomObject`/security settings retrieve next time.
+
+**Manifest note:** this retrieval left `manifest/package.xml` rewritten
+down to just `Profile: Admin, Car Rental Representative` — it lost the
+original wildcards (ApexClass, LWC, StaticResource, etc.) from before.
+Likely a side effect of a scoped "retrieve source in manifest" action in
+VS Code. Left as retrieved rather than reverted unilaterally — worth
+deciding whether the manifest should go back to broad wildcards or stay
+as an explicit, intentionally-scoped list going forward.
