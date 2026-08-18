@@ -261,13 +261,16 @@ past); a Related Cases list; a `Car_Images__r` gallery alongside the
 `CreatedById`/`LastModifiedById` fields and the full field-history
 related list for audit. All eight required sections are present.
 
-A conditional formatting rule set (`Car_Rating_Ruleset`) is applied to
-`Average_Rating__c`, driving the sad/smiling/happy icon-by-range
-display. As with `CarOnRentalLogo` and `System_Thresholds__mdt`
-earlier, only the *reference* to the rule set came through in
-retrieval — its actual threshold/icon definition isn't in this repo,
-so a fresh deploy of this page would need that rule set to already
-exist in the target org.
+A conditional formatting rule set (`Car_Rating_Ruleset`, a
+`UiFormatSpecificationSet`) is applied to `Average_Rating__c`, driving
+an icon-by-range display: `0 ≤ x < 3` → sad face (red), `x = 3` → happy
+face (blue, the "smiling" tier), `3 < x ≤ 5` → big grin face (green).
+Matches the described tiers exactly.
+
+`System_Thresholds__mdt` (the custom metadata *type* definition, as
+opposed to its record values documented above) and this rule set were
+initially retrieved by reference only, without their own definitions —
+both have since been pulled in properly.
 
 ## Booking record page (booking hub)
 
