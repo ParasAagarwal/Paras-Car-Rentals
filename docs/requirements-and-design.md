@@ -228,3 +228,61 @@ category, not part of the categorization logic itself.
 `Type` and `Reason` are standard Case picklists with no local
 `valueSet` in their own field metadata — the per-category restriction
 lives entirely in each Record Type's `picklistValues`, not on the field.
+
+## Context-aware Case page layouts
+
+**Requirement:** The case screen should surface only the fields
+relevant to the case's category, so reps aren't scrolling past
+irrelevant data.
+
+**Solution:** One Page Layout per Case record type (paired with the
+Business Processes/Record Types above), each surfacing different fields
+first:
+
+| Layout | Fields shown first |
+|---|---|
+| `Case-Booking Inquiry Layout` | Customer, Related Booking |
+| `Case-Maintenance Request Layout` | Customer, Related Car |
+| `Case-Review Issue Layout` | Customer, Related Booking, Review |
+
+Matches the requirement exactly for all three.
+
+## Car record page (360° view)
+
+**Requirement:** One screen giving a complete operational view of a
+car — details, upcoming and past bookings, related cases, photos,
+activity, and audit info.
+
+**Solution:** `Car_Record_Page`, a Lightning Record Page with: a Car
+Details highlights section; two Booking related lists filtered on
+`Status__c` (`Pending`/`Confirmed` = future, `Cancelled`/`Completed` =
+past); a Related Cases list; a `Car_Images__r` gallery alongside the
+`Car_Image__c` formula preview; an Activities panel; and both
+`CreatedById`/`LastModifiedById` fields and the full field-history
+related list for audit. All eight required sections are present.
+
+A conditional formatting rule set (`Car_Rating_Ruleset`) is applied to
+`Average_Rating__c`, driving the sad/smiling/happy icon-by-range
+display. As with `CarOnRentalLogo` and `System_Thresholds__mdt`
+earlier, only the *reference* to the rule set came through in
+retrieval — its actual threshold/icon definition isn't in this repo,
+so a fresh deploy of this page would need that rule set to already
+exist in the target org.
+
+## Booking record page (booking hub)
+
+**Requirement:** One screen aggregating a booking's full lifecycle —
+details, key car/customer info, payments, reviews, cases, activity, and
+audit history.
+
+**Solution:** `Booking_Record_Page`: Booking Details section; Key Car
+Info; Key Customer Info (`Customer__r.Email`, `Customer__r.Phone`);
+`Payment_Transactions__r`, `Reviews__r`, and `Cases__r` related lists;
+an Activities panel; and both audit fields and the full field-history
+related list.
+
+**Gap:** Key Car Info only shows `Car__r.Name`, `Rental_Rate_Per_Day__c`,
+and `Car_Family__c`. The requirement explicitly calls for transmission
+type and fuel type too (`Car__r.Transmission_Type__c`,
+`Car__r.Fuel_Type__c`), and neither is on the page. Worth adding next
+time you're in App Builder.
