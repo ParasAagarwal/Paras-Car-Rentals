@@ -1,0 +1,15 @@
+<p>Hello Team,</p>
+
+<p>A new case has been assigned to the queue. Please review and take ownership at your earliest
+convenience.</p>
+<p><b>Case Summary:</b></p>
+<ul>
+<li>Case Number: <a href="{{Case.LINK}}">{{Case.CaseNumber}}</a></li>
+<li>Priority: {{Case.Priority}}</li>
+<li>Date Opened: {{Case.CreatedDate}}</li>
+<li>Subject: {{Case.Subject}}</li>
+</ul>
+<p><b>Description:</b></p>
+<p>{{Case.Description}}</p>
+<p>Thank you,</p>
+<p>Car On Rental</p>

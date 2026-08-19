@@ -449,3 +449,65 @@ machinery than is needed until a second business-object trigger
 actually shows up — reasonable to have in place as scaffolding, but
 there's no urgency to populate `Metadata_Driven_Trigger__mdt` records
 until that happens.
+
+## Automated case routing
+
+**Requirement:** Route incoming cases to the right team automatically —
+Maintenance Requests to Fleet Management, Booking Inquiries and Review
+Issues to Customer Support — with no manual triage.
+
+**Solution:** One active Case Assignment Rule (`Assignment Based On
+Record Type`) with two entries, both matching on `Case.RecordTypeId`
+and both sending the same Lightning email template
+(`Case Assignment Email Template`) to notify the destination queue:
+
+| Case record type | Routed to |
+|---|---|
+| Maintenance Request | `Fleet Management Team` queue |
+| Booking Inquiry, Review Issue | `Customer Support Queue` |
+
+Matches the requirement exactly. The org also ships a second, inactive
+`Standard` assignment rule with `Account.SLA__c`/`BillingCountry`
+criteria pointing at a scratch-org demo user — that's default sample
+data the org came with, not something built for this project, and it's
+correctly left inactive.
+
+**Gap:** `Customer_Support_Queue`'s members are the roles
+`CustomerSupportInternational`/`CustomerSupportNorthAmerica` — leftover
+demo-org roles, not part of this project's actual role hierarchy
+(`CEO`/`Supervisor`/`Representative Agent`). A `Customer_Support` public
+group was created alongside this work but was never actually added as
+the queue's member — right now nobody in the real org structure is a
+member of the queue cases get routed to. `Fleet_Management_Team`
+queue, by contrast, is wired correctly to the `Fleet_Management_Team`
+public group used elsewhere for maintenance sharing.
+
+**Not retrievable:** the org-wide "no-reply" email address isn't
+Metadata-API-retrievable (there's no `OrgWideEmailAddress` source
+type), so it's configured in the org only — expected, not a gap.
+
+## Automatic case escalation
+
+**Requirement:** A Case of Type "Vehicle Breakdown" not updated within
+2 hours should auto-escalate to the Manager role.
+
+**Solution:** Escalation rule `Paras Car on Rental Escalations`: fires
+when `Case.Type = 'Breakdown'` (the actual picklist value; "Vehicle
+Breakdown" was shorthand) and `Case.Status = 'New'`, reassigns to the
+`Manager Escalation Queue` (whose only member is the `Supervisor` role)
+at 120 minutes, using Salesforce's standard
+`SupportEscalatedCaseNotification` template. The added `Status = 'New'`
+condition narrows it to only escalate while still untouched — reasonable,
+though not explicitly called for in the requirement. Note Salesforce
+Escalation Rules always measure time-since-creation (`CaseCreation`),
+not literally "time since last update" — there's no alternative
+declarative option, so this is the closest available implementation of
+the stated requirement, not a shortfall in the setup.
+
+**Bug:** the escalation rule is currently **inactive**
+(`active = false`). The org's other, unrelated `Standard` escalation
+rule — bundled demo content with Platinum/Gold/Silver/Bronze SLA tiers
+pointing at a scratch-org user — is the one marked `active = true`.
+Since only one escalation rule can be active at a time, **the Breakdown
+2-hour escalation isn't currently running.** Needs activating in the
+org (and the demo `Standard` rule deactivating) for this to take effect.
