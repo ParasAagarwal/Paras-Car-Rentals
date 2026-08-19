@@ -504,10 +504,14 @@ not literally "time since last update" — there's no alternative
 declarative option, so this is the closest available implementation of
 the stated requirement, not a shortfall in the setup.
 
-**Bug:** the escalation rule is currently **inactive**
-(`active = false`). The org's other, unrelated `Standard` escalation
-rule — bundled demo content with Platinum/Gold/Silver/Bronze SLA tiers
-pointing at a scratch-org user — is the one marked `active = true`.
-Since only one escalation rule can be active at a time, **the Breakdown
-2-hour escalation isn't currently running.** Needs activating in the
-org (and the demo `Standard` rule deactivating) for this to take effect.
+**Fixed:** `Paras Car on Rental Escalations` is now `active = true`.
+
+**Worth double-checking:** the bundled demo `Standard` rule still reads
+`active = true` in this same retrieved file too. Salesforce only
+allows one active escalation rule per object at a time (confirmed —
+activating one is supposed to deactivate any other), so both showing
+`true` here shouldn't be possible if this file reflects current org
+state. Worth confirming directly in Setup → Case Escalation Rules
+which one Salesforce actually treats as active; if it still shows
+`Standard` as active there, this file just hasn't been re-retrieved
+since, and `Standard` needs explicitly deactivating.
