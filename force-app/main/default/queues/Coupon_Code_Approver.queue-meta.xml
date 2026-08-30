@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Queue xmlns="http://soap.sforce.com/2006/04/metadata">
+    <doesIncludeBosses>false</doesIncludeBosses>
+    <doesSendEmailToMembers>false</doesSendEmailToMembers>
+    <name>Coupon Code Approver</name>
+    <queueMembers>
+        <roles>
+            <role>CEO</role>
+        </roles>
+        <users>
+            <user>paras.agarwal.5cd1ed52be9e@agentforce.com</user>
+        </users>
+    </queueMembers>
+    <queueSobject>
+        <sobjectType>Coupon_Code__c</sobjectType>
+    </queueSobject>
+</Queue>

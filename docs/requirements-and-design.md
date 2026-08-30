@@ -527,3 +527,83 @@ non-blank), paired with a Duplicate Rule
 (`Block Duplicate Coupon Code`) that blocks on both insert and update
 when that matching rule fires. Matches the requirement exactly — both
 fields must match, not either, and it's active.
+
+## Coupon code approval workflow
+
+**Requirement:** Auto-approve coupon codes within the discount
+threshold; submit ones above it for approval; re-submit on changes to
+discount, expiration, or max uses; show the approval status prominently.
+
+**Solution:** `Approval_for_Coupon_Code`, a record-triggered Flow, paired
+with the `Coupon_Code_Discount_Level_Approval` Approval Process:
+
+1. **Trigger.** Runs after save on create *or* update, but only when it
+   matters: `ISNEW() || ISCHANGED(Expiration_Date__c) ||
+   ISCHANGED(Discount_Percentage__c) || ISCHANGED(Max_Uses__c)` — exactly
+   the three re-submission triggers called out in the requirement, plus
+   new records.
+2. **Threshold check.** Looks up `Max_Auto_Approved_Discount` from
+   `System_Thresholds__mdt` (the same admin-configurable threshold used
+   elsewhere) and compares it to `Discount_Percentage__c`.
+3. **Auto-approval path.** At or below threshold → `Approval_Status__c`
+   set to `Approved` directly, no approval process involved.
+4. **Submission path.** Above threshold → submits the record to the
+   `Coupon_Code_Discount_Level_Approval` process by name. That process
+   has one step, assigned to the `Coupon Code Approver` queue, and sets
+   `Approval_Status__c` to `Pending`/`Approved`/`Rejected` at
+   submission/final-approval/final-rejection respectively. Because the
+   flow re-evaluates on every relevant change, a record that drops back
+   under the threshold after editing will auto-approve again rather than
+   staying stuck in a stale approval state — a detail the requirement
+   didn't explicitly ask for but which falls naturally out of this design.
+
+**Error handling — reusing the apex-recipes logging framework.** All
+three points that can fail (the threshold lookup, the approval
+submission, and the auto-approval field update) wire their
+`faultConnector` to a single `Publish_the_Error` step, which creates a
+`Log__e` platform event (`Quiddity__c = 'Flow'`, `Request_Id__c =
+'Coupon Code Approval'`, `Severity__c = 'High'`, message =
+`$Flow.FaultMessage`). This is the exact same durable, rollback-safe
+logging pipeline documented earlier
+(`Log__e` → `LogTrigger` → `LogTriggerHandler` → `LogEvent__c`) — rather
+than a Flow-specific error handling mechanism, this flow plugs into the
+project's one standard logging path, so a failure here shows up in the
+same place as any other logged error.
+
+**Critical bug — this feature can't currently work.**
+`Check_Maximum_Discount_Limit` (the validation rule flagged earlier for
+dividing the threshold by 100 against another percent field) was
+updated to only fire `AND(ISNEW(), ...)` — a legitimate, necessary
+change, since without it the rule would hard-block *any* update that
+goes through this approval flow. **But the underlying `/100` bug itself
+was not fixed.** The rule still reads
+`Discount_Percentage__c > VALUE(...Max_Coupon_Code_Discount.Value__c)/100`,
+so it still blocks nearly any discount ≥ 1% on *new* coupon codes — which
+means a coupon code can't even be created in the first place for this
+whole approval workflow to run against. This needs the same fix flagged
+before (drop the `/100`) before this feature can be exercised at all.
+
+**Worth confirming:** the approval step uses
+`whenMultipleApprovers: FirstResponse` (first person in the
+`Coupon Code Approver` queue to act decides it), while the requirement
+says the record "will only be marked Approved... after all required
+Approvers have approved it" — wording that suggests unanimous consent
+from multiple approvers. First-response-from-a-queue is a common and
+reasonable interpretation of "a designated set of Approvers," but worth
+a quick gut-check that it's the intended behavior rather than a stricter
+multi-approver requirement.
+
+**Gaps:**
+- **Status Visibility isn't implemented yet.** No Path Assistant and no
+  `Coupon_Code__c` record page exist in this repo, so there's currently
+  no banner showing the approval status on the record — only the
+  underlying `Approval_Status__c` field and the values it's set to.
+- **The three field-update actions the approval process references**
+  (`Update_Approval_Status_to_Pending/Approved/Rejected`) are only
+  referenced by name in `Coupon_Code_Discount_Level_Approval` — their
+  actual `WorkflowFieldUpdate` definitions live under a `workflows`
+  metadata folder that hasn't been retrieved. Same "referenced but not
+  retrieved" pattern as `CarOnRentalLogo`, the utility bar, and
+  `Car_Rating_Ruleset` earlier — except this one would actually break a
+  fresh deploy of this repo, since the approval process depends on them
+  existing.
