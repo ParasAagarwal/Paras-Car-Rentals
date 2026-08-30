@@ -515,3 +515,15 @@ state. Worth confirming directly in Setup → Case Escalation Rules
 which one Salesforce actually treats as active; if it still shows
 `Standard` as active there, this file just hasn't been re-retrieved
 since, and `Standard` needs explicitly deactivating.
+
+## Coupon code duplicate prevention
+
+**Requirement:** Block creating (or saving) a coupon code that matches
+an existing one on both Coupon Code and Discount Percentage.
+
+**Solution:** A Matching Rule (`Match_Based_on_Code_and_Percent`) doing
+an exact match on `Code__c` AND `Discount_Percentage__c` (both required
+non-blank), paired with a Duplicate Rule
+(`Block Duplicate Coupon Code`) that blocks on both insert and update
+when that matching rule fires. Matches the requirement exactly — both
+fields must match, not either, and it's active.
