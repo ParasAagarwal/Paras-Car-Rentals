@@ -21,14 +21,24 @@
                 <label>Confirmed</label>
             </value>
             <value>
-                <fullName>Cancelled</fullName>
+                <fullName>Started</fullName>
                 <default>false</default>
-                <label>Cancelled</label>
+                <label>Started</label>
             </value>
             <value>
                 <fullName>Completed</fullName>
                 <default>false</default>
                 <label>Completed</label>
+            </value>
+            <value>
+                <fullName>Cancelled</fullName>
+                <default>false</default>
+                <label>Cancelled</label>
+            </value>
+            <value>
+                <fullName>Closed</fullName>
+                <default>false</default>
+                <label>Closed</label>
             </value>
         </valueSetDefinition>
     </valueSet>

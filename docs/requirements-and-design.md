@@ -352,7 +352,8 @@ restriction called out); the Rental Manager Permissions set grants Read
 | Contact | Public Read/Write |
 | Coupon Code | Public Read/Write |
 | LogEvent | Public Read/Write |
-| Payment Transaction, Car Image | Not set directly — inherit from parent (Booking, Car) via Master-Detail |
+| Review | Public Read/Write |
+| Payment Transaction, Car Image | Controlled By Parent (Booking, Car) |
 
 Grant Access Using Hierarchies is on for all of these, so a role's
 managers automatically see what their reports own.
@@ -375,12 +376,10 @@ Both match their stated requirements exactly — Fleet gets edit access
 the moment a car needs service, Marketing gets read-only access only
 after a booking is fully audited.
 
-**Retrieval gap:** none of the object metadata in this repo has a
-`<sharingModel>` element yet for any object — the org-wide default
-settings above (Private/Public Read Only/Public Read-Write) haven't
-been retrieved into source form. The behavior is presumably live in the
-org already; this repo just doesn't reflect it yet. Worth a
-`CustomObject`/security settings retrieve next time.
+**Confirmed:** every object's `<sharingModel>` is now present in this
+repo's metadata and matches the table above exactly (this was flagged
+as an outstanding retrieval gap earlier — resolved by a later object
+retrieve, not something separately called out at the time).
 
 **Manifest note:** this retrieval left `manifest/package.xml` rewritten
 down to just `Profile: Admin, Car Rental Representative` — it lost the
@@ -690,3 +689,35 @@ continuing to hit it feature by feature.
   displays `Get_Coupon_Code.Discount_Percentage__c` directly — which
   renders blank rather than "0%," since that lookup never ran on that
   path. Cosmetic only.
+
+## Booking status lifecycle & path assistant
+
+**Requirement:** Define the full booking lifecycle as distinct status
+stages, and guide users through them with a path on the record page.
+
+**Solution:** `Booking__c.Status__c` now has all six stages, in order:
+`Pending` (default) → `Confirmed` → `Started` → `Completed` →
+`Cancelled` → `Closed`. A Path Assistant (`Booking Status`) was added
+covering all six values with per-stage guidance text and relevant
+fields to check at each step (e.g. `Confirmed` surfaces
+`Payment_Status__c`/`Car__c`/both dates; `Cancelled` surfaces
+`Cancellation_Reason__c` and notes bookings can't be cancelled once
+started; `Closed` surfaces the deposit/audit fields and notes the
+booking is now archived), and it's been added to
+`Booking_Record_Page`'s header, right below the highlights panel.
+Matches the requirement exactly — all six stages, in the stated order,
+each with its own guided step.
+
+One of the path's info notes ("Bookings without payment after 24 hours
+may be auto-cancelled") describes behavior that doesn't exist yet in
+this repo — no automation currently enforces a 24-hour payment window.
+Worth treating as a stated future requirement rather than documentation
+of something already built.
+
+This retrieval also brought in the org-wide sharing model fix noted
+above, plus routine noise on the Case object (standard
+Product/SLAViolation/PotentialLiability picklist values on the three
+Case record types, and auto-generated queue list views for
+Customer Support, Fleet Management, Manager Escalation, and Coupon
+Code Approver) — bundled metadata from a broader retrieve, not
+authored for this project.
