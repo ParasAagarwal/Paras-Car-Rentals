@@ -721,3 +721,129 @@ Case record types, and auto-generated queue list views for
 Customer Support, Fleet Management, Manager Escalation, and Coupon
 Code Approver) — bundled metadata from a broader retrieve, not
 authored for this project.
+
+## Car return checklist (screen flow)
+
+**Requirement:** A single guided screen for an agent to close out a
+completed booking — capture vehicle condition, branch into damage
+reporting with photo evidence and follow-up automation when needed,
+settle the security deposit, and collect the customer's rating and
+feedback.
+
+**Star rating component — sourcing decision.** Screen Flow has no
+built-in star-rating input. The stated reasoning for how this was
+solved, in order of preference actually followed: check AppExchange
+first, treat writing a custom LWC as the last resort, and only build
+one if nothing suitable exists. That search led to
+[unofficialsf.com's "Add a star rating component to your screens"](https://unofficialsf.com/from-yumi-add-a-star-rating-component-to-your-screens/),
+an established community-published, free, unmanaged Aura component
+(`StarRatingComponent`, backed by a `fivestar` static resource). It
+implements the `lightning:availableForFlowScreens` interface, which is
+exactly what makes it selectable as a screen flow field, and was
+installed as-is (not rebuilt as an LWC) — a reasonable call: an Aura
+component already solving this exact problem, publicly documented and
+in evident community use, is far less risk than hand-rolling a new
+input component for something as self-contained as a star widget.
+
+The one bit of debt from this install: the `fivestar` static resource's
+zip still contains macOS `__MACOSX/._*` metadata files
+(`._rating.css`, `._rating.js`, `._stars.svg`) — harmless leftovers
+from how the zip was packaged, but worth stripping out next time this
+resource is touched. Also note its `AuraDefinitionBundle` is pinned to
+API v55.0 against this project's v67.0 — expected and correct to leave
+alone, since it's a third-party bundle, not something to "fix" the way
+a first-party API-version mismatch would be.
+
+**Launch condition.** The `Car Return Process` quick action on
+`Booking__c` only appears when `Record.Status__c = 'Completed'` (a
+dynamic action visibility rule on the highlights panel) — correctly
+enforcing "for a completed booking" declaratively, without needing
+flow-side logic for it.
+
+**The flow, screen by screen:**
+
+1. **Vehicle condition.** Fuel Level (a dynamic choice set sourced
+   directly from `Car__c.Fuel_Level__c`'s own picklist, so it can never
+   drift out of sync with the field) and a required "Is any damage on
+   Car?" checkbox.
+2. **Damage details** — a whole section gated behind
+   `Is_any_damage_on_Car = true` via `visibilityRule`: damage notes
+   (required only when damage is checked — its validation formula
+   `Is_any_damage_on_Car && LEN(notes) != 0` is redundant given the
+   section's own visibility rule already guarantees the left side is
+   true whenever it's evaluated, but not wrong) and a required file
+   upload, matching "one or more images... as evidence."
+3. **Refund details.** "Refund full security deposit?" (defaults true)
+   or a percentage deduction, validated to be > 0 when a partial refund
+   is chosen. The requirement says "a specific amount *or* percentage,"
+   but the implementation only supports percentage (the field's help
+   text says so explicitly) — a reasonable simplification, though it
+   does narrow the stated option set to one of the two.
+4. **Customer feedback.** The star rating component, and comments that
+   are required only when the rating is below 3 —
+   `OR(rating >= 3, NOT(ISBLANK(comments)))` — matching "less than 3"
+   exactly, including the boundary (a rating of exactly 3 does not
+   require comments).
+
+**What happens on submit** (all in one sequence, each DML step's
+`faultConnector` routing to an in-flow `Error_Screen` that shows
+`$Flow.FaultMessage` directly to the agent — the right choice here,
+since a live user is watching this screen flow in real time, unlike the
+two autolaunched flows documented earlier that correctly publish to the
+`Log__e` pipeline instead, since nobody's watching those):
+
+- If damaged: `Availability_Status__c` → `Under Maintenance`,
+  `Damage_Notes__c` set, uploaded images linked via
+  `ContentDocumentLink`, a `High`-priority Task created for the booking
+  owner (due tomorrow) to reassign affected future bookings, and a
+  `Case` created with Record Type `Maintenance Request`, `Type =
+  'Damage'`, `Status = 'New'`, linked to both the Car and the Customer.
+  Both the Task subject and the Case subject/description text exactly
+  match the requirement's specified wording and business logic.
+- Either way: the Car record is updated (fuel level always; damage
+  fields only if damaged), a `Payment_Transaction__c` of `Type =
+  'Refund'` is created for the calculated deposit amount (feeding
+  directly into `Total_Security_Refund_Amount__c` documented earlier), a
+  `Review__c` is created from the rating/comments, and the `Booking__c`
+  is updated to `Status = 'Closed'` with
+  `Post_Booking_Completion_Audit__c = true` and
+  `Security_Refund_Completed__c = true`.
+
+That last update is a nice piece of unplanned integration: setting
+`Post_Booking_Completion_Audit__c = true` here is exactly the trigger
+condition for the Marketing Team sharing rule documented earlier, so
+completing a return automatically makes the booking visible to
+Marketing — and `Status = 'Closed'` lines up precisely with what the
+Booking Status path assistant describes for that stage.
+
+**Bugs found:**
+
+- **The Task and Case subject text templates both duplicate the car
+  name.** `taskSubject` reads
+  `...damaged car : {!Get_Booking_Record.Car__r.Name}{!Get_Booking_Record.Car__r.Name}`
+  and `caseSubject` reads
+  `Damage Reported for Car - {!Get_Booking_Record.Car__r.Name}{!Get_Booking_Record.Car__r.Name} on Booking...`
+  — the same merge field is pasted twice back-to-back with no
+  separator in both templates, so the actual rendered subject repeats
+  the car's name immediately (e.g. "...damaged car :
+  Toyota CamryToyota Camry"). Needs one of each duplicate removed.
+- **A clean (non-damaged) return never restores the car to
+  `Available`.** The no-damage branch only assigns `Fuel_Level__c` to
+  `updateCarRecord` before the DML update — `Availability_Status__c` is
+  never touched, so a car returned in good condition keeps whatever
+  status it had during the rental (e.g. still not bookable) instead of
+  becoming available again. The requirement only specified the status
+  change for the damaged case, but leaving the happy path's status
+  unchanged looks like an oversight rather than an intentional choice —
+  worth confirming and very likely needs a fix.
+
+**Worth a second look, not confirmed bugs:**
+
+- `Get_Record_Type_For_Case` looks up the `Maintenance_Request` record
+  type by `DeveloperName` alone, with no `SobjectType = 'Case'` filter.
+  Safe today since that name is presumably unique org-wide, but fragile
+  if any other object ever gets a record type with the same API name.
+- Uploaded damage images are linked to the **Booking** record
+  (`LinkedEntityId = recordId`), not the Car or the newly-created
+  Maintenance Case. Worth confirming that's the intended home for
+  "evidence," since the damage itself is being tracked on the Case.
