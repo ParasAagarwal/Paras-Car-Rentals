@@ -784,6 +784,9 @@
                     <name>actionNames</name>
                     <valueList>
                         <valueListItems>
+                            <value>Car__c.Estimate_Your_Booking</value>
+                        </valueListItems>
+                        <valueListItems>
                             <value>Edit</value>
                         </valueListItems>
                         <valueListItems>
@@ -805,7 +808,7 @@
                 </componentInstanceProperties>
                 <componentInstanceProperties>
                     <name>numVisibleActions</name>
-                    <value>3</value>
+                    <value>5</value>
                 </componentInstanceProperties>
                 <componentInstanceProperties>
                     <name>primaryField</name>

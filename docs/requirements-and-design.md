@@ -607,3 +607,86 @@ multi-approver requirement.
   `Car_Rating_Ruleset` earlier — except this one would actually break a
   fresh deploy of this repo, since the approval process depends on them
   existing.
+
+## Booking cost estimator (screen flow)
+
+**Requirement:** Let a user get an accurate, transparent cost estimate
+for a car booking — car details, date inputs with validation, coupon
+validation, and a full calculated summary — without creating a real
+Booking record.
+
+**Solution:** `Estimate_your_Booking`, a two-screen flow launched from a
+quick action (`Car__c.Estimate_Your_Booking`) added to the Car record
+page's action bar (and bumped `numVisibleActions` from 3 to 5 so it
+shows as a button rather than being buried in the overflow menu).
+
+**Screen 1 — inputs, auto-fetched car details read-only:**
+Car Name, Fuel Type, Location, Rental Rate Per Day, and Transmission
+Type are pulled from `Get_Car_Details` (looked up by the quick action's
+`recordId`) and shown as read-only fields — all five called for in the
+requirement. Alongside them: mandatory Start Date and End Date, and an
+optional Coupon Code.
+
+**Validations, both as in-screen field validation rules (immediate
+feedback, no server round-trip):**
+- Start Date: `{!Start_Date_Of_Booking} > today()` — strictly greater
+  than, so today itself is correctly rejected, not just past dates.
+- End Date: `{!End_Date_Of_Booking} >= {!Start_Date_Of_Booking}` —
+  "on or after," exactly as specified.
+- Coupon Code: handled as flow branching rather than a field validation
+  rule, since it needs a database lookup. If entered,
+  `Get_Coupon_Code` queries `Coupon_Code__c` filtered on both
+  `Code__c` equals the input *and* `Is_Active__c = true` in one query —
+  so a code that exists but is inactive is indistinguishable from one
+  that doesn't exist at all, and both correctly produce "not
+  found" → the error path. On no match, the flow loops back
+  (`isGoTo`) to the input screen with an error message shown via a
+  `visibilityRule` tied to an `isCounponCodeValid` flag, while
+  explicitly preserving whatever dates were already entered
+  (`iniStartDate`/`iniEndDate`) so the user doesn't have to retype them.
+
+**Calculations**, run in one `Assignment` element as a deliberate
+sequential chain — each formula reads the *previous* item's just-updated
+variable, which Salesforce Flow evaluates correctly since assignment
+items execute top-to-bottom within one element:
+
+1. `BookingDays` = `IF(start == end, 1, end - start)` — guards the
+   same-day edge case so a one-day booking doesn't compute as 0 days.
+2. `BookingPrice` = `BookingDays * Rental_Rate_Per_Day__c`
+3. `NetPrice` = `BookingPrice`, minus the coupon's
+   `Discount_Percentage__c` applied as a percentage, if a code was
+   entered — otherwise `BookingPrice` unchanged.
+4. `SecurityDeposit` = the `Security_Deposit_Percentage` system
+   threshold applied to `NetPrice` (i.e., the post-discount amount) —
+   consistent with how `Booking__c.Security_Deposit__c` applies the same
+   threshold to `Final_Booking_Price__c` elsewhere in this project.
+
+**Screen 2 — summary:** a branded header (org name/address/phone, current
+date, and the company logo) followed by every required line item — car
+name, transmission, fuel type, location, both dates, days, discount,
+booking price, security deposit, and net price — plus a closing
+"Thank You" message. All items from the requirement's final-summary list
+are present.
+
+**Recurring gap:** the summary screen's logo image
+(`flowruntime:image`, `imageName: CarOnRentalLogo`) is yet another
+reference to the same static resource flagged missing from this repo
+multiple times now (the app's brand logo, the `Car_Image__c` fallback
+formula, and now here). Four references and counting — worth a
+dedicated retrieve of just that one static resource rather than
+continuing to hit it feature by feature.
+
+**Minor notes, not bugs:**
+- `frmNetPrice` decides whether to apply a discount by checking
+  `ISBLANK(Enter_Coupon_Code)` rather than checking whether
+  `Get_Coupon_Code` actually returned a record. It's correct today only
+  because of how the decision branches are wired — every path that
+  reaches the calculation step with a non-blank code has already been
+  through the validity check. It would be more self-evidently correct
+  (and less fragile against future changes to the flow) to check the
+  looked-up record directly instead of relying on that implicit
+  guarantee.
+- On the summary screen, if no coupon was entered, the "Discount" line
+  displays `Get_Coupon_Code.Discount_Percentage__c` directly — which
+  renders blank rather than "0%," since that lookup never ran on that
+  path. Cosmetic only.
