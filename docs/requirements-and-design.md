@@ -847,3 +847,133 @@ Booking Status path assistant describes for that stage.
   (`LinkedEntityId = recordId`), not the Car or the newly-created
   Maintenance Case. Worth confirming that's the intended home for
   "evidence," since the damage itself is being tracked on the Case.
+
+## New booking creation automation
+
+**Requirement:** On every new booking, calculate its final price,
+freeze the coupon once it's past Pending, email the customer a
+confirmation, and give the owning agent a follow-up task — and if
+nothing happens for 24 hours, treat it as abandoned and auto-cancel it.
+
+**`Prevent_Coupon_Code_Change_if_Not_Pendin`** (validation rule):
+blocks changing `Coupon_Code__c` once `Status__c` isn't `Pending`.
+Matches the requirement exactly.
+
+**`Post Booking Automation - Field Update`** (before-save, on create):
+sets `Final_Booking_Price__c` and defaults both `Status__c` and
+`Payment_Status__c` to `Pending` on every new record — a fast,
+single-transaction field update rather than a separate after-save DML,
+which is the right call here.
+
+**Bug — duplicated, out-of-sync price calculation.** Rather than
+reading the already-existing `Base_Price__c` formula field, this flow
+recomputes the same thing itself:
+`Rental_Rate_Per_Day__c * (End_Date_Time__c - Start_Date_Time__c)`.
+That's missing the same-day guard that `Booking_Duration__c` (which
+`Base_Price__c` is built on) has —
+`IF(start == end, 1, end - start)`. For a same-day booking, this flow's
+version computes 0 days and a $0 base/final price, while the
+`Base_Price__c` field displayed elsewhere on the record would show one
+full day's rate. Reading `{!$Record.Base_Price__c}` directly instead of
+re-deriving it would have avoided both the duplication and the bug.
+
+**`Post Booking Automation - After Save activity`** (after-save, on
+create, plus a 24-hour scheduled path): sends the confirmation email
+and creates the agent follow-up task. Both match the requirement almost
+field-for-field — the email correctly pulls `Base_Price__c`,
+`Final_Booking_Price__c`, and `Security_Deposit__c` (reusing the real
+formula fields rather than recalculating), and the task's due date,
+owner, and description text match exactly. One deviation, and it's the
+right one: the requirement's task subject template includes
+`{{Booking.CaseNumber}}`, a field that doesn't exist on `Booking__c` at
+all (it's a Case-only field) — the implementation correctly dropped it
+rather than trying to reference something invalid.
+
+The 24-hour scheduled path re-queries the Booking fresh
+(`Booking_Record_After_24_Hours`) rather than trusting the stale
+`$Record` from creation time — the right pattern for a delayed path.
+It auto-cancels when both `Total_Paid_Amount__c` and
+`Total_Security_Deposit_Paid__c` are still zero.
+
+**Bug — doesn't check the booking is still `Pending` before
+auto-cancelling.** The 24-hour check only looks at the two payment
+totals, never `Status__c`. If an agent manually cancels a
+never-paid booking (for some unrelated reason, with its own
+`Cancellation_Reason__c`) any time in that first 24 hours, this
+scheduled path still fires at the 24-hour mark, sees both totals still
+at zero, and overwrites that reason with
+`"Autocancel Booking due to No Payment in 24 Hours"` — clobbering
+whatever the agent actually recorded. Adding a
+`Status__c = 'Pending'` check to `Check_for_Payments` would fix this.
+
+**Minor:** the requirement frames abandonment as "no payment activity
+*or modifications*"; only the payment-activity half is implemented —
+a booking that was edited but still unpaid is still auto-cancelled at
+24 hours. Likely the dominant signal anyway, but worth knowing it's a
+partial implementation of that clause.
+
+## Booking cancellation automation
+
+**Requirement:** Block cancelling a booking whose start date has
+passed; on cancellation, refund the security deposit (minus a
+threshold-driven cancellation charge), refund any rent payment as a
+separate adjustment, mark the booking's payment status accordingly, and
+close out related open Cases and Tasks.
+
+**Bug — two validation rules now enforce the same rule, inconsistently.**
+`Check_Cancellation_After_Start` (built earlier — see the validation
+rules section above) and the new `Validation_for_Booking_Cancellation`
+both block cancelling a booking whose start date has passed, but they
+don't agree:
+
+| | `Check_Cancellation_After_Start` (earlier) | `Validation_for_Booking_Cancellation` (new) |
+|---|---|---|
+| Guard | None — fires on *any* save of an already-cancelled, past-start booking | `ISCHANGED(Status__c)` — only fires on the actual cancel action |
+| Comparison | `Start_Date_Time__c < NOW()` (to the minute) | `DATEVALUE(Start_Date_Time__c) < TODAY()` (whole day) |
+
+The new rule is the better-designed one — it doesn't accidentally block
+unrelated edits (like adding a note) to an old, already-cancelled
+booking the way the old one does, and its date-level (not
+minute-level) comparison is arguably a more literal reading of "the
+rental start date has not yet passed." But since both are still active,
+the *stricter* of the two wins in practice: the old rule's minute-level
+cutoff still applies, and its missing `ISCHANGED` guard still blocks
+harmless edits to old cancelled bookings. Recommend deactivating
+`Check_Cancellation_After_Start` now that its replacement exists.
+
+**`Post Booking Cancellation Automation`** (after-save, on update,
+`Status__c` changes to `Cancelled`): the two halves of the requirement
+are deliberately decoupled — refund creation runs synchronously
+(needed before the interview ends), while closing related Cases/Tasks
+runs on an `AsyncAfterCommit` scheduled path (doesn't depend on the
+payment logic at all, so it always runs regardless of payment
+outcome, and doesn't block the main transaction). That's a genuinely
+good design choice, not just a default.
+
+Refund logic: if the security deposit was paid, looks up the
+`Cancelled_Percentage` threshold (the same one documented earlier) and
+creates a `Refund` payment transaction for
+`deposit - deposit * (cancelled% / 100)`. If rent was paid, creates a
+separate `Adjustment` transaction for the *full* rent amount (correctly
+not reduced by the cancellation percentage, which per the requirement
+only applies to the deposit). Both `Type__c` values are real, valid
+picklist entries. `Payment_Status__c` is set to `Refunded` — the
+requirement's text says `"Refund"`, but `Refunded` is the field's
+actual picklist value, so the implementation correctly used the real
+one rather than the requirement's casual paraphrase.
+
+**Gap — no fault handling anywhere in this flow.** Every other
+autolaunched flow in this project (the coupon approval flow, the
+booking estimator, and the sibling "After Save activity" flow above)
+routes failures to the `Log__e` logging pipeline. This flow has no
+`faultConnector` on any of its four DML elements — a failure here (a
+bad picklist value, a validation rule conflict, a permissions issue)
+would fail silently from this project's point of view, visible only as
+Salesforce's default flow-fault email to the running user. Worth
+bringing in line with the rest of the project's flows.
+
+**Minor:** `Is_Payment_Transactions_records_available`'s decision has
+no default-outcome connector, but tracing the possible paths into it,
+the collection can never actually be empty there given how the earlier
+decisions gate entry — dead code today, not a live bug, but worth a
+default connector anyway for robustness against future changes.
