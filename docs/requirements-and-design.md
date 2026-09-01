@@ -1030,3 +1030,92 @@ second trusted image host alongside the earlier `Car_Images_API` one,
 presumably for a sample/test image URL sourced from Google's image
 cache rather than the S3 bucket used before. Routine, not
 business-logic-bearing.
+
+## Payment transaction trigger: booking & payment status
+
+**Requirement:** On every payment transaction insert or delete,
+recalculate the booking's `Payment_Status__c` (`Paid` only when total
+received exactly matches total due, including an exact security
+deposit match; `Partially Paid` otherwise) and auto-advance
+`Status__c` from `Pending` to `Confirmed` on any successful payment.
+
+**Solution — the first real use of the metadata-driven trigger
+framework.** `PaymentTransactionTrigger` (`after insert, after
+delete`) just calls `new MetadataTriggerHandler().run()`; a new
+`Metadata_Driven_Trigger__mdt` record wires `Payment_Transaction__c` to
+`PaymentTransactionTriggerHandler`. This is the framework doing real
+work for the first time — until now (see the framework's write-up
+earlier in this file) it only backed the logging pipeline, with zero
+`Metadata_Driven_Trigger__mdt` records driving actual business
+objects. That's resolved now.
+
+`PaymentTransactionTriggerHandler` (extends `TriggerHandler`) delegates
+to `PaymentTransactionTriggerHandlerService.handlePaymentTransactions`,
+which: collects the affected booking IDs, runs one bulk parent→child
+query (`Booking__c` with a `Payment_Transactions__r` subquery filtered
+to `Status__c = 'Success'` and the three "money in" types), sums each
+type per booking in Apex, computes the new `Payment_Status__c` and
+`Status__c`, and does one bulk `update`. Properly bulkified throughout
+— no queries or DML inside loops — and correctly excludes `Refund` and
+`Adjustment` transactions from the "paid" totals, matching how the
+roll-up summary fields defined earlier are scoped. The DML is wrapped
+in a `try/catch` that publishes to the `Log__e` pipeline on failure,
+consistent with the project's established error-handling pattern.
+`calculateBookingStatus` correctly implements the Pending→Confirmed
+rule: any of the three payment totals being positive while status is
+still `Pending` flips it to `Confirmed`.
+
+**Bug — the security deposit isn't actually required to be an exact
+match.** `calculatePaymentStatus` checks
+`isSecurityDepositCompleted = securityDeposit <= securityPayment`. Using
+`<=` means an *overpaid* deposit still counts as "completed," so a
+booking with a fully-paid rental amount and an overpaid deposit would
+be marked `Paid` — but the requirement is explicit and specific here:
+*"Partially Paid" ... applies ... if a security deposit payment is not
+an exact match.* That should be `securityDeposit == securityPayment`.
+The equivalent rental-side check
+(`finalBookingPrice <= totalRentalPayment`) has the same overpayment
+tolerance, though the requirement is less explicit there — worth a
+look, less certain to be wrong.
+
+**Bug — deleting all payments never resets status back to `Pending`.**
+The method's opening guard,
+`if(initialPayment == 0 && securityDeposit == 0 && finalBookingPrice == 0)`,
+was clearly meant to catch "nothing has been paid yet" and return
+`Pending`, but it checks `securityDeposit` and `finalBookingPrice` —
+the *amounts owed*, not the amounts paid — instead of also checking
+`partialPayment` and `securityPayment`. Since a real booking's price is
+essentially never `$0`, this guard never fires in practice. Consequence:
+if every payment transaction on a booking is deleted, the totals all
+go back to zero, but the calculation falls through to the real logic —
+`0 <= finalBookingPrice` is false, so it lands on `Partially Paid`
+rather than reverting to `Pending`, even though nothing has been paid
+at all. The guard should check
+`initialPayment == 0 && partialPayment == 0 && securityPayment == 0`.
+
+**Design note, not a bug:** the per-type sums this service computes
+(`initialPayment + partialPayment`, `securityPayment`) duplicate what
+`Total_Paid_Amount__c` and `Total_Security_Deposit_Paid__c` — the
+native roll-up summary fields documented earlier — already maintain.
+Reading those two fields directly on the queried `Booking__c` would
+have avoided re-deriving the same aggregation in Apex, the same class
+of duplication that caused the `Base_Price__c` bug in the new-booking
+automation section above.
+
+**Test coverage:** `PaymentTransactionTriggerHandlerTest` covers the
+Pending→Confirmed transition, reaching full payment across two inserts
+in one bulk DML, and partial reversal after deleting one transaction —
+all pass against the current code, but none of them hit the two bugs
+above: the security deposit in the test is paid at the *exact* amount
+owed (so `<=` and `==` behave identically there), and only one of three
+payment types is ever deleted, never all of them. Worth adding an
+overpayment case and a delete-everything case, both of which the
+current tests would need to catch once the bugs above are fixed.
+
+`Constants.cls` (new, shared across future Apex) also defines several
+constants not used anywhere yet — `NEGATIVE_REVIEW_RECORD_TYPE`/
+`NEGATIVE_REVIEW_CASE_TYPE`/`CUSTOMER_SUPPORT_PUBLIC_GROUP`
+(auto-creating a Case from a bad review, presumably), `AVAILABLE_CARS`,
+and `STATUS_EMAIL`/`STATUS_DETAIL_EMAIL` (email deliverability
+checking). Informational only — these read as forward declarations for
+features not yet built, not part of this change.
