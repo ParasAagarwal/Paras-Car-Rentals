@@ -906,6 +906,10 @@ at zero, and overwrites that reason with
 whatever the agent actually recorded. Adding a
 `Status__c = 'Pending'` check to `Check_for_Payments` would fix this.
 
+**Fixed:** `Check_for_Payments` now also requires
+`Booking_Record_After_24_Hours.Status__c != 'Cancelled'` before
+auto-cancelling.
+
 **Minor:** the requirement frames abandonment as "no payment activity
 *or modifications*"; only the payment-activity half is implemented —
 a booking that was edited but still unpaid is still auto-cancelled at
@@ -940,6 +944,8 @@ the *stricter* of the two wins in practice: the old rule's minute-level
 cutoff still applies, and its missing `ISCHANGED` guard still blocks
 harmless edits to old cancelled bookings. Recommend deactivating
 `Check_Cancellation_After_Start` now that its replacement exists.
+
+**Fixed:** `Check_Cancellation_After_Start` is now deactivated.
 
 **`Post Booking Cancellation Automation`** (after-save, on update,
 `Status__c` changes to `Cancelled`): the two halves of the requirement
@@ -977,3 +983,50 @@ no default-outcome connector, but tracing the possible paths into it,
 the collection can never actually be empty there given how the earlier
 decisions gate entry — dead code today, not a live bug, but worth a
 default connector anyway for robustness against future changes.
+
+## Primary car image synchronization
+
+**Requirement:** Only one image per car can be primary at a time; when
+a new image is marked primary, all other images for that car become
+non-primary and the car's `Primary_Image_Url__c` reflects the new
+choice; a primary image can't be deleted.
+
+**`Prevent Deletion Of Primary Image`**: a before-delete flow on
+`Car_Image__c`, filtered to `Primary_Image__c = true`, blocking with a
+custom error. Simple and correct — matches the requirement exactly.
+
+**`Sync Primary Image`**: after-save (create or update) on
+`Car_Image__c`, filtered to `Primary_Image__c = true`. Looks for
+another image on the same car, marks it non-primary, then updates the
+car's `Primary_Image_Url__c` from the newly-primary image — the right
+shape for the requirement.
+
+**Bug — the "find the other primary image" query doesn't check for
+primary.** `Get_Existing_Primary_Image` filters only on
+`Car__c = $Record.Car__c` and `Id != $Record.Id` — it has no
+`Primary_Image__c = true` filter, so it returns *some other image* on
+the car, not specifically *the currently-primary one*. With no `ORDER
+BY`, which one it happens to return is unpredictable. Concretely: a
+car with three images (A = primary, B and C = not) — mark B as primary,
+and this query might return C instead of A. The flow then unsets C
+(already `false`, a no-op) and leaves A still marked primary, so the
+car ends up with **two** primary images (A and B) at once — the exact
+invariant this flow exists to enforce. Needs
+`Primary_Image__c = true` added to `Get_Existing_Primary_Image`'s
+filters.
+
+**Not a bug, out of scope:** if a user unchecks the current primary
+image's `Primary_Image__c` without marking a replacement, this flow
+never fires (it only triggers when `Primary_Image__c` becomes `true`),
+so the car's `Primary_Image_Url__c` is left pointing at an image that's
+no longer flagged primary. The requirement only specifies behavior for
+*marking* a new primary, not un-marking one, so this isn't a
+requirement mismatch — just a real gap if that scenario matters in
+practice.
+
+This work also added a second CSP Trusted Site
+(`Creta_Car_Image_1`, `encrypted-tbn0.gstatic.com`, img-src) — a
+second trusted image host alongside the earlier `Car_Images_API` one,
+presumably for a sample/test image URL sourced from Google's image
+cache rather than the S3 bucket used before. Routine, not
+business-logic-bearing.

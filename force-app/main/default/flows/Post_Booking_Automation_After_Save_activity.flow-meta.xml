@@ -73,6 +73,13 @@
                     <numberValue>0.0</numberValue>
                 </rightValue>
             </conditions>
+            <conditions>
+                <leftValueReference>Booking_Record_After_24_Hours.Status__c</leftValueReference>
+                <operator>NotEqualTo</operator>
+                <rightValue>
+                    <stringValue>Cancelled</stringValue>
+                </rightValue>
+            </conditions>
             <connector>
                 <targetReference>Autocancel_the_booking</targetReference>
             </connector>
