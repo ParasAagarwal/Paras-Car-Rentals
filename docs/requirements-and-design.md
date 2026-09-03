@@ -1293,3 +1293,91 @@ backdate some records past the retention window and leave others
 recent, then asserting on actual deletion counts and which records
 survive, would make this test verify real behavior instead of just
 "didn't throw."
+
+## Customer-facing car availability API
+
+**Requirement:** A REST endpoint returning available cars for a date
+range and location (mandatory), with optional fuel type/transmission
+filters — "available" meaning no overlapping reservation against any
+booking that isn't `Cancelled` or `Closed`.
+
+**Solution:** `CarAvailabilityRestApiService`
+(`@RestResource(urlMapping='/v1/cars/available/*')`, `@HttpGet`) reads
+query params, validates the mandatory ones, queries `Car__c` excluding
+cars with a conflicting booking, and returns a `responseWrapper`
+(`success`/`message`/`cars`) with each car's `id`, `name`, `rentalRate`,
+`imageUrl`, `fuelType`, `family`, `transmissionType`, `description`,
+and `location` — all nine required fields, correctly mapped. Returning
+`Primary_Image_Url__c` (the raw URL) rather than `Car_Image__c` (the
+pre-rendered HTML `IMAGE()` formula documented earlier) is the right
+call for an API response — an external consumer needs a plain URL to
+put in its own `<img>` tag, not Salesforce-internal markup. The query
+also filters on `Availability_Status__c = 'Available'`, a sensible
+extra safeguard beyond what the requirement asked for.
+
+**Critical bug — the conflict check is not an overlap check.** The
+query that decides which cars are booked is:
+
+```sql
+SELECT Id, Car__c FROM Booking__c
+WHERE Start_Date_Time__c >= :startDateTime AND End_Date_Time__c <= :endDateTime
+```
+
+Two separate, serious problems with this:
+
+1. **No status filter at all.** The requirement is explicit — check
+   against bookings that are *not* `Cancelled` or `Closed`. This query
+   has no `Status__c` condition whatsoever, so an old, cancelled or
+   already-closed booking that happens to fall in the searched range
+   will still mark that car unavailable, hiding cars that are actually
+   free.
+2. **The comparison is backwards — it checks containment, not overlap.**
+   `existing.Start >= requested.Start AND existing.End <= requested.End`
+   only matches an existing booking that is *entirely inside* the
+   searched range. It misses the much more common case: an existing
+   booking that's *longer than* the search window and contains it. A
+   car booked Jan 10–20 would still be returned as "available" for a
+   Jan 12–15 search, since Jan 10 is not `>=` Jan 12 — the exact
+   opposite of what "prevent scheduling conflicts" requires. The
+   correct overlap test already exists in this codebase —
+   `BookingTriggerHandlerService.hasOverlap`, documented above:
+   `existing.Start <= requested.End AND existing.End >= requested.Start`
+   — and should have been reused or mirrored here rather than
+   reimplemented differently.
+
+Together, this means the API's core promise — don't offer a car that's
+already booked for the requested dates — doesn't actually hold for the
+most common overlap patterns. This is worth prioritizing over
+everything else in this feature.
+
+**Bug — missing required parameters throw instead of returning the
+friendly validation message.** `Date startDate =
+Date.valueOf(req.params.get('startDate'));` runs *before* the
+`if (startDate == null ...)` check below it. `Date.valueOf(null)`
+throws (it doesn't return null), so a request missing `startDate` (or
+`endDate`) never reaches that validation — it fails with an unhandled
+exception and a generic error response instead of the intended
+`"Start date and end date are required"` message. The null-check as
+written is unreachable dead code. Fix: check
+`String.isBlank(req.params.get('startDate'))` *before* parsing, or wrap
+the `Date.valueOf` calls in a try/catch.
+
+**Design note, not a bug:** every response — including validation
+failures and "no cars available" — comes back with HTTP 200; failure is
+only signaled via the `success: false` field in the body, never a 4xx
+status code. That's a legitimate API design choice (envelope-based
+status), just worth knowing if the consuming client expects
+conventional REST status codes.
+
+**Test gap:** `CarAvailabilityRestApiServiceTest` has one test, and it
+searches a date range (`today+10` to `today+30`) that doesn't overlap
+the one booking `TestDataFactory` creates (`today+1` to `today+3`)
+under *either* the correct or the buggy overlap logic — so it can't
+tell the two apart, and doesn't exercise the bug above at all. It also
+never sends a request missing `startDate`, so the second bug isn't
+covered either. Its `formatDate` helper
+(`inpDate.year() + '-' + inpDate.month() + '-' + inpDate.day()`) also
+doesn't zero-pad month/day, which is worth double-checking against
+`Date.valueOf`'s expected `yyyy-MM-dd` format for dates early in a
+month. There's also a block of commented-out, superseded date-formatting
+code left in the test worth deleting.
