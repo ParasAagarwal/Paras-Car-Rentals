@@ -1381,3 +1381,88 @@ doesn't zero-pad month/day, which is worth double-checking against
 `Date.valueOf`'s expected `yyyy-MM-dd` format for dates early in a
 month. There's also a block of commented-out, superseded date-formatting
 code left in the test worth deleting.
+
+## Contact email validation (external API integration)
+
+**Requirement:** Automatically validate a Contact's email via an
+external API whenever the Contact is created or its email changes,
+using a secure external integration; mark it valid only when the API's
+`status` is `deliverable` and `status_detail` is `valid_email`.
+
+**Solution — the project's first outbound external API integration.**
+`ContactTrigger` (`after insert, after update`) → `ContactTriggerHandler`
+→ `ContactTriggerHandlerService.processContact`, which enqueues
+`queueableEmailValidation` (`Queueable, Database.AllowsCallouts`).
+Async is not just a performance choice here — Salesforce simply doesn't
+allow synchronous HTTP callouts from trigger context at all, so a
+Queueable is the only way this can work. Trigger scoping is correct:
+`afterInsert` processes every new Contact, `afterUpdate` only processes
+ones where `Email` actually changed. Uses a Named Credential
+(`SecuredEndpoint`) plus a separate External Credential/Principal
+(`Email_Reputation` / `admin`), with that principal's access correctly
+granted to the `Car On Rental` permission set — the modern,
+recommended pattern for external callouts. `Constants.STATUS_EMAIL`
+(`'deliverable'`) and `STATUS_DETAIL_EMAIL` (`'valid_email'`) —
+declared but unused when first documented earlier in this file — are
+now the exact two values this checks against, matching the requirement
+precisely.
+
+**Bug — currently broken in the org: Named Credential name doesn't
+match what the code calls.** The Apex callout targets
+`callout:EmailReputation`, but the deployed Named Credential's actual
+API name is `EmaiReputation` (missing the "l" — visible in this repo's
+own filename, `EmaiReputation.namedCredential-meta.xml`). Its `label`
+correctly reads "Email Reputation," which is exactly why this was easy
+to miss in Setup — the friendly label looks right; the underlying API
+name, which is what actually has to match the code, doesn't. This is
+confirmed as the live cause of a `System.CalloutException: ... the
+named credential "EmailReputation" might not exist` error seen while
+testing. Named Credential API names generally can't be edited in
+place, so the fix is deleting and recreating it with the correct
+spelling (same URL, same `Email_Reputation` External Credential
+attached) — everything else (the External Credential, its principal,
+and the permission set grant) is already wired correctly and shouldn't
+need touching.
+
+**Bug — no protection against the 100-callout governor limit.**
+`queueableEmailValidation.execute()` loops over every contact in
+`contactIds` and makes one HTTP callout per contact, with no chunking
+and no limit check. A trigger can receive up to 200 records per batch,
+and Salesforce caps callouts at 100 per transaction — a bulk update
+touching more than 100 contacts' emails at once (a data load, a bulk
+edit) would throw `System.LimitException: Too many callouts` partway
+through the loop. Because that loop isn't wrapped in its own try/catch
+(only the final `update ContactToUpdate` is), the exception aborts the
+whole job before that update ever runs — meaning even the *first* 100
+successfully-validated contacts lose their results, not just the ones
+past the limit.
+
+**Bug — the email isn't URL-encoded before being placed in the query
+string.** `'callout:EmailReputation/?api_key=' + apiKey + '&email=' +
+email` concatenates the raw email directly. Reserved URL characters in
+an email value — `#`, `&`, `+`, `%`, spaces — will be misinterpreted by
+the HTTP layer rather than sent as literal characters. This isn't
+theoretical: the debugging session that found the Named Credential bug
+above captured a real outgoing request with `email=pa3#@gmail.com` —
+the `#` there is the URL fragment delimiter, so everything from `#`
+onward would be dropped rather than sent to the API. Wrapping the value
+in `EncodingUtil.urlEncode(email, 'UTF-8')` would fix this.
+
+**Design question, not a confirmed bug:** on any callout failure —
+timeout, non-200 response, the Named Credential bug above, a future
+API outage — `validateEmail` returns `false`, and that gets written to
+`Email_Verified__c`. That conflates "the API told us this email is
+bad" with "we couldn't ask." A transient failure currently has the same
+effect as a confirmed-invalid result: a real customer's good email
+gets marked unverified. Worth considering leaving `Email_Verified__c`
+unchanged (skip that contact in `ContactToUpdate`) when the callout
+itself fails, reserving `false` for an actual "not deliverable"
+response from the API.
+
+**Test coverage:** `ContactTriggerHandlerServiceTest` uses
+`Test.setMock` with a purpose-built `EmailValidatoinHtppMock` returning
+a valid `deliverable`/`valid_email` response — the correct pattern for
+testing callouts, and it passes. It only covers the happy path,
+though — no test for a non-200 response, a mock that returns an
+invalid status, or more than 100 contacts in one transaction, so the
+governor-limit bug above isn't caught by anything here.
