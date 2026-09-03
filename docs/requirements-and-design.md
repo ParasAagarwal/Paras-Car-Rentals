@@ -1113,9 +1113,116 @@ overpayment case and a delete-everything case, both of which the
 current tests would need to catch once the bugs above are fixed.
 
 `Constants.cls` (new, shared across future Apex) also defines several
-constants not used anywhere yet — `NEGATIVE_REVIEW_RECORD_TYPE`/
-`NEGATIVE_REVIEW_CASE_TYPE`/`CUSTOMER_SUPPORT_PUBLIC_GROUP`
-(auto-creating a Case from a bad review, presumably), `AVAILABLE_CARS`,
-and `STATUS_EMAIL`/`STATUS_DETAIL_EMAIL` (email deliverability
-checking). Informational only — these read as forward declarations for
-features not yet built, not part of this change.
+constants not used anywhere yet — `AVAILABLE_CARS` and
+`STATUS_EMAIL`/`STATUS_DETAIL_EMAIL` (email deliverability checking).
+Informational only — read as forward declarations for features not yet
+built. (`NEGATIVE_REVIEW_RECORD_TYPE`, `NEGATIVE_REVIEW_CASE_TYPE`, and
+`CUSTOMER_SUPPORT_PUBLIC_GROUP`, unused at the time this was written,
+are now used by the low-rating review alert below.)
+
+## Car revenue tracking, low-rating alerts, average rating, and booking overlap
+
+**Requirement:** Four related pieces of automation across `Booking__c`
+and `Review__c`: keep each car's total closed-booking revenue current,
+alert Customer Support and open a case on a low-rated review, keep each
+car's average rating current, and block double-booking a car for
+overlapping active date ranges.
+
+**Shared bug — record-level sharing will silently break two of these
+four features.** `BookingTriggerHandlerService` and
+`QueuableTotalCarValue` are both declared `with sharing`, but
+`Booking__c`'s org-wide default is **Private** (documented in the
+security model earlier). Both classes run queries that need to see
+*every* relevant booking regardless of who owns it or who's currently
+running the code — not just what the triggering user happens to have
+access to:
+
+- **Overlap validation** (`validateBookingOverlap`) queries all other
+  active bookings for the car to check for conflicts. If the user
+  creating a booking can't see another rep's existing booking for that
+  same car (Private OWD, no sharing rule covers this), that booking is
+  invisible to the query — the conflict goes undetected and the
+  double-booking this feature exists to prevent gets created anyway.
+- **Revenue rollup** (`QueuableTotalCarValue`) sums
+  `Total_Paid_Amount__c` across all of a car's `Closed` bookings. A
+  Queueable job runs as whoever enqueued it, so if that user can't see
+  every closed booking for the car, `Total_Bookings_Value__c` is
+  undercounted — silently, with no error, since a missing row just
+  isn't included in the sum.
+
+Both need to run in system context — either drop `with sharing` (or use
+`without sharing`) on these two classes, since their whole job is
+computing an org-wide truth, not a user-scoped view. Right now neither
+bug is visible in testing because Apex tests run as an admin-like user
+by default, and none of the new tests use `System.runAs()` with a
+lower-access user to simulate the actual failure case.
+
+**Car revenue tracking (`Total_Bookings_Value__c`):** `BookingTrigger`
+(`before insert, before update, after update`) → `BookingTriggerHandler.
+afterUpdate` → `updateTotalBookingValueForCar`, which only acts when
+`Status__c` actually changes *to* `Closed`, then hands off to
+`QueuableTotalCarValue` — deliberately asynchronous, per the stated
+reasoning that nobody needs this number in real time and it shouldn't
+cost synchronous transaction time. The aggregate query itself
+(`sum(Total_Paid_Amount__c)` grouped by `Car__c`, filtered to `Closed`)
+correctly matches the requirement — modulo the sharing bug above.
+
+**Low-rating review alert:** `ReviewTriggerHandler.afterInsert`/
+`afterUpdate` filter to `Rating__c < 3` (only on insert, or on update
+when the rating actually changed into that range), then
+`shareLowRatingAndCreateCase`: looks up the `Customer_Support` group
+(the same one from the security model), checks for an existing manual
+`Booking__share` before inserting a new Read-access one, then creates a
+`Review Issue`/`Negative Review`/`Medium` Case — deduplicated against
+existing cases for the same review first. The record type lookup here
+(`Schema.SObjectType.Case.getRecordTypeInfosByDeveloperName()`) is
+worth noting as a better pattern than the Car Return Checklist flow's
+equivalent lookup documented earlier, which queried `RecordType` by
+`DeveloperName` with no `SobjectType` filter — this one is inherently
+scoped to `Case` and can't cross-match a same-named record type on
+another object. The created Case's `Related_Booking__c`/`ContactId`
+correctly satisfy the `Case.Review_ID__c` lookup filter documented
+earlier (booking and customer match the review's own), confirming this
+lines up with work from an earlier session.
+
+**Car average rating:** `udpateCarAverageRating`, called from insert,
+update (rating-changed only), and delete, averages `Rating__c` across a
+car's reviews (via their bookings) and rounds with
+`RoundingMode.HALF_UP` — both match the requirement precisely. It also
+explicitly handles deleting a car's last remaining review by setting
+`Average_Rating__c` back to `null` rather than leaving a stale value —
+the same class of "reset on delete-to-zero" edge case that the payment
+status logic documented above got wrong, correctly handled here.
+
+**Booking overlap validation:** `validateBookingOverlap` (called from
+both `beforeInsert` and `beforeUpdate`, the latter only when
+`Car__c`/`Start_Date_Time__c`/`End_Date_Time__c` actually changed, to
+avoid re-checking on unrelated edits) queries other bookings for the
+same car with `Status__c` in `Pending`/`Confirmed`/`Started`/`Completed`
+— exactly the set the requirement specifies — and blocks via
+`addError()` using the new `Booking_Overlap_Message` custom label,
+whose text matches the requirement exactly. The overlap test itself,
+`newStart <= existingEnd && newEnd >= existingStart`, is textbook-correct
+interval overlap logic, including treating two bookings that touch
+exactly at the boundary (one ends the moment the other starts) as
+overlapping — stricter than a literal reading of "overlap," but a
+sensible, conservative choice for a car rental (no zero-gap turnaround
+without at least a moment's buffer).
+
+**Test gap — "assert inside catch" won't fail if the bug above isn't
+fixed.** `testValidateBookingOverlapForInsert`/`ForUpdate` both do:
+
+```
+try {
+    insert overlapBooking;
+} catch (DMLException ex) {
+    System.Assert(actualErrorMessage.contains(expectedErrorMessage), ...);
+}
+```
+
+If the overlap validation fails to fire — exactly what the sharing bug
+above would cause — the `insert` simply succeeds, the `catch` block
+never runs, and the test passes anyway, having asserted nothing. The
+standard fix is a `System.assert(false, 'Expected an overlap error')`
+immediately after the `insert` inside the `try`, so success-when-it-
+should-have-failed is itself a test failure rather than a silent pass.
