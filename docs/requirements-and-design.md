@@ -1226,3 +1226,70 @@ never runs, and the test passes anyway, having asserted nothing. The
 standard fix is a `System.assert(false, 'Expected an overlap error')`
 immediately after the `insert` inside the `try`, so success-when-it-
 should-have-failed is itself a test failure rather than a silent pass.
+
+## Log cleanup batch job
+
+**Requirement:** A scheduled batch job that deletes `LogEvent__c`
+records older than a configurable retention period (default 7 days),
+tolerates individual record failures without stopping, and emails a
+summary report (processed/succeeded/failed counts) to a configured
+address when it finishes.
+
+**Solution:** `LogCleanupBatch` (`Database.Batchable<sObject>`,
+`Database.Stateful`) reads `Days_To_Keep_Logs` and
+`Log_Clean_up_Notification` from `System_Thresholds__mdt` in its
+constructor, queries `LogEvent__c` where `CreatedDate` is before
+`today() - daysToKeep`, and deletes each chunk with
+`Database.delete(scope, false)` — the `allOrNone = false` partial-success
+mode is exactly right for "continue even if individual records fail."
+Per-chunk results are tallied into `Database.Stateful` instance
+counters (correctly accumulating across chunks, which is what that
+interface is for), failures are logged through the existing `Log__e`
+pipeline, and `finish()` emails a report with all three requested
+counts. `LogCleanupBatchSchedule` (`Schedulable`) just calls
+`Database.executeBatch(new LogCleanupBatch(), 200)` — the standard
+schedule-triggers-batch pattern.
+
+**Needs action, not a code bug: the notification email is still a
+placeholder.** `Log_Clean_up_Notification`'s `Value__c` is literally
+`putyourownemail@dummy.com`. The report has nowhere real to go until
+that custom metadata record is updated with an actual address. Also
+worth checking Setup → Email Administration → Deliverability in this
+org — sandbox/scratch orgs commonly restrict outbound email by default,
+which could silently swallow the report even after the address is
+fixed.
+
+**Not visible from this repo: is the job actually scheduled?**
+`LogCleanupBatchSchedule` provides the mechanism, but *activating* it
+(picking a cron expression and calling `System.schedule()`, typically
+via Setup → Apex Classes → Schedule Apex, or a one-time anonymous Apex
+execution) is an org-side action, not something that shows up in
+retrievable metadata — there's no file to check here for whether it's
+running daily as intended. Worth confirming directly in Setup →
+Scheduled Jobs.
+
+**Minor:** the failure-logging line,
+`String.join(result.getErrors(), ', ')`, joins a `List<Database.Error>`
+using `String`'s generic `Object`-list overload, which stringifies each
+`Database.Error` via its default representation rather than its
+`getMessage()` text specifically — likely still somewhat readable, but
+noisier than intended. Explicitly building a `List<String>` of
+`error.getMessage()` values first would guarantee a clean log message.
+
+**Test gap — the test doesn't actually test anything.**
+`LogCleanupBatchTest.testLogCleanupBatchFullExecution`'s only
+assertion is `System.assert(true, 'Batch execution should complete
+without errors')` — a tautology that passes unconditionally regardless
+of what the batch did. Worse, the test data is inserted with no way to
+backdate `CreatedDate` (correctly noted in the code's own comment that
+it's a system field), so every "old" test log actually has today's
+`CreatedDate` — meaning the 7-day-old cutoff query matches *none* of
+them, `execute()` never receives a non-empty scope, and the delete /
+partial-failure / counter logic this batch exists to implement is never
+exercised at all. Apex has a purpose-built fix for exactly this:
+`Test.setCreatedDate(recordId, backdatedDatetime)` lets a test
+explicitly override a record's `CreatedDate` after insert. Using it to
+backdate some records past the retention window and leave others
+recent, then asserting on actual deletion counts and which records
+survive, would make this test verify real behavior instead of just
+"didn't throw."
