@@ -1517,34 +1517,26 @@ a per-star distribution bar chart with percentages, and the detailed
 review list (rating, comments, formatted date) — matching the
 requirement's summary + detail structure exactly.
 
-**Bug — the empty-state placeholder can never actually show.** The
-template's condition for "does this car have reviews" is
-`<template lwc:if={reviews}>`, where `reviews` is the array assigned
-from the wire response. In JavaScript, an empty array `[]` is truthy —
-only `this.reviews` being `null`/`undefined` would make this `lwc:if`
-false. Since a car with zero reviews still gets `reviews: []` back from
-Apex (not `null`), this branch renders every time data loads
-successfully, regardless of whether there are any reviews — leaving
-the review list empty and the distribution bars all at 0%, instead of
-showing the `c-placeholder` "No reviews found" message in the
-`lwc:else` branch, which becomes unreachable in exactly the scenario
-the whole feature exists for. Should be
-`<template lwc:if={reviews.length}>` (or an explicit length check).
+**Fixed — the empty-state placeholder now shows correctly.** The
+original condition, `<template lwc:if={reviews}>`, was always truthy
+for the empty array Apex returns when a car has no reviews (`[]` is
+truthy in JavaScript), so the `c-placeholder` "No reviews found"
+branch was unreachable. Now reads
+`<template lwc:if={reviews.length}>`, so a genuinely empty list
+correctly falls through to the placeholder.
 
-**Bug — the rating-distribution list items have no real `key`.** The
-`for:each={ratingDistributionList}` loop binds `key={dist.key}`, but
-the objects built in the `ratingDistributionList` getter only have
-`rating`, `count`, and `percentage` — no `key` property was ever set,
-so every item's key is `undefined`. LWC requires a unique key per
-`for:each` item for correct rendering; this should be `key={dist.rating}`
-(1–5, already unique) instead.
+**Fixed — the rating-distribution list now has a real `key`.**
+`key={dist.key}` referenced a property that was never set on those
+objects; now `key={dist.rating}` (1–5, already unique per item).
 
-**Minor:** on a wire error, `carRatingReview` sets `this.error` and
-`this.allReviews = undefined` — but `allReviews` isn't a property used
-anywhere else in the component (the real property is `reviews`), so
-that line does nothing useful. `hasData` also never gets set on error,
-so the component just renders an empty card with no visible error
-state at all.
+**Fixed — a visible error state.** `carRatingReview` now clears
+`this.error` on a successful load and renders
+`c-error-panel` (the apex-recipes error component documented earlier,
+`@api errors` / `@api friendlyMessage`) in an `lwc:elseif={error}`
+branch alongside the existing `lwc:if={hasData}`, so a wire failure
+shows an actual message instead of a silently empty card. The earlier
+`this.allReviews = undefined` dead-code line is also gone — the error
+path correctly clears `this.reviews` now.
 
 **Test coverage:** all three new Jest test files
 (`placeholder.test.js`, `starRating.test.js`, `carRatingReview.test.js`)

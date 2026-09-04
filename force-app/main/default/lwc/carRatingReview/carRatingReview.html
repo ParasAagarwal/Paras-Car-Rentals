@@ -1,7 +1,7 @@
 <template>
   <lightning-card title="Car Rating & Reviews">
     <template lwc:if={hasData}>
-      <template lwc:if={reviews}>
+      <template lwc:if={reviews.length}>
         <div class="slds-var-p-around_small">
           <div class="slds-grid slds-gutters">
             <div class="slds-col slds-size_1-of-3">
@@ -15,7 +15,7 @@
         <div class="slds-var-p-around_small">
           <template for:each={ratingDistributionList} for:item="dist">
             <div
-              key={dist.key}
+              key={dist.rating}
               class="slds-var-p-bottom_small slds-grid slds-grid_vertical-align-center"
             >
               <div class="slds-col slds-size_3-of-12">
@@ -65,6 +65,12 @@
       <template lwc:else>
         <c-placeholder message="No reviews found"></c-placeholder>
       </template>
+    </template>
+    <template lwc:elseif={error}>
+      <c-error-panel
+        errors={error}
+        friendly-message="Unable to load reviews"
+      ></c-error-panel>
     </template>
   </lightning-card>
 </template>

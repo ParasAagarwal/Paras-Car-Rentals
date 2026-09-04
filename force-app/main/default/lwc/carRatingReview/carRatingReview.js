@@ -21,6 +21,7 @@ export default class CarRatingReview extends LightningElement {
       this.totalReviews = data.totalReviews;
       this.processReviews();
       this.hasData = true;
+      this.error = undefined;
     } else if (error) {
       this.error = error;
       this.reviews = undefined;
