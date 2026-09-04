@@ -878,6 +878,12 @@
     <flexiPageRegions>
         <itemInstances>
             <componentInstance>
+                <componentName>carRatingReview</componentName>
+                <identifier>c_carRatingReview</identifier>
+            </componentInstance>
+        </itemInstances>
+        <itemInstances>
+            <componentInstance>
                 <componentInstanceProperties>
                     <name>actionNames</name>
                 </componentInstanceProperties>
