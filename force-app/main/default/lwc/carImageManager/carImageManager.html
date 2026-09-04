@@ -32,13 +32,19 @@
             ></lightning-input>
           </div>
           <div class="slds-col slds-size_8-of-12">
-            <lightning-file-upload
+            <lightning-input
+              type="file"
               label="Add Picture"
-              name="fileUploader"
               accept=".png,.jpg,.jpeg"
-              record-id={recordId}
-              onuploadfinished={handleUploadFinished}
-            ></lightning-file-upload>
+              disabled={isUploading}
+              onchange={handleFileChange}
+            ></lightning-input>
+            <template lwc:if={isUploading}>
+              <lightning-spinner
+                alternative-text="Uploading"
+                size="small"
+              ></lightning-spinner>
+            </template>
           </div>
         </div>
       </div>

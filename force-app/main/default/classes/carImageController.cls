@@ -1,36 +1,35 @@
 public with sharing class carImageController {
    
-    @AuraEnabled 
+    // base64Data is expected to already be resized/compressed (500x500 JPEG)
+    // by the caller -- see carImageManager.resizeAndCompressImage.
+    @AuraEnabled
     public static void createFile(
-        String documentId,
+        String base64Data,
+        String fileName,
         String recordId,
         Boolean isPrimaryImage
     ){
-        //get the latest content version from the content document. 
-
-        List<ContentVersion> contentVersion = [
-            SELECT Id,ContentDocumentId from ContentVersion 
-            where IsLatest = true and ContentDocumentId = :documentId
-            order by CreatedDate desc limit 1
-        ];
-        if(contentVersion.isEmpty()){
-           throw new AuraHandledException('Content version not found for content document id ' + isPrimaryImage);
-        }
-
-        //insert record in carImage
-        Car_Image__c carImage = new Car_Image__c(
-            Car__c = recordId,
-            Image_Url__c =  '/sfc/servlet.shepherd/version/download/' + contentVersion[0].Id
-        );
-        if(isPrimaryImage){
-            carImage.Primary_Image__c = true;
-        }
         try {
+            ContentVersion contentVersion = new ContentVersion();
+            contentVersion.Title = fileName;
+            contentVersion.PathOnClient = fileName;
+            contentVersion.VersionData = EncodingUtil.base64Decode(base64Data);
+            insert contentVersion;
+
+            //insert record in carImage
+            Car_Image__c carImage = new Car_Image__c(
+                Car__c = recordId,
+                Image_Url__c =  '/sfc/servlet.shepherd/version/download/' + contentVersion.Id
+            );
+            if(isPrimaryImage){
+                carImage.Primary_Image__c = true;
+            }
             insert carImage;
         } catch (Exception ex) {
             System.debug(ex.getMessage());
-             Log logger = Log.get();
+            Log logger = Log.get();
             logger.publish(ex.getMessage());
+            throw new AuraHandledException('Failed to upload image: ' + ex.getMessage());
         }
     }
 

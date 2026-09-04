@@ -1567,18 +1567,21 @@ pointing at it, then the component calls `refreshApex` and
 on the page (like the highlights panel) pick up the change immediately.
 Good, deliberate LDS hygiene throughout.
 
-**Gap — no resizing or compression happens anywhere.** The requirement
-is specific: uploaded images must be resized to 500×500 and compressed.
-Neither the component nor `carImageController` does either — the file
-picked in `lightning-file-upload` is stored as-is, and `createFile`
-just points a `Car_Image__c` record at that unmodified file. To be
-fair, this isn't a one-line fix — Apex has no built-in image
-manipulation API, so this genuinely needs either a client-side resize
-(drawing onto a `<canvas>` and re-encoding before upload) or an
-external image-processing call, not just logic that was skipped by
-mistake. Worth deciding which approach before treating this feature as
-done, since as it stands the resize/compress half of the requirement
-is entirely unimplemented.
+**Fixed — client-side resize and compression.** `lightning-file-upload`
+was replaced with `lightning-input type="file"`, since the former
+auto-uploads on selection with no chance to touch the bytes first. On
+selection, the file is now drawn onto an offscreen 500×500 canvas
+(scaled to fit within that box preserving aspect ratio, letterboxed on
+white rather than cropped) and re-encoded as JPEG at quality 0.7 before
+being sent to Apex as base64. `createFile` was reworked to build the
+`ContentVersion` directly from that base64 data (`Title`/
+`PathOnClient`/`VersionData`) instead of looking up an existing upload
+by `documentId` — which also incidentally resolved the wrong-variable
+error-message bug noted below, since the code path that produced it no
+longer exists. As a side effect of catching and re-throwing as
+`AuraHandledException` on failure, the component's existing error toast
+— previously unreachable, since the old code swallowed every exception
+silently — now actually fires.
 
 **Bug — connects to two features from earlier sessions.** `createFile`
 sets `Image_Url__c` to
@@ -1597,13 +1600,6 @@ public/guest-accessible file distribution (e.g. `ContentDistribution`)
 or moving image hosting off Salesforce Files entirely for anything
 feeding that API.
 
-**Bug:** the "content version not found" error message concatenates
-the wrong variable —
-`'Content version not found for content document id ' + isPrimaryImage`
-uses the `isPrimaryImage` boolean instead of `documentId`, so the error
-actually read is nonsensical (e.g. "...content document id false")
-rather than naming the document ID that couldn't be found.
-
 **Worth reconsidering, not a bug:** the "Primary Image" checkbox
 defaults to *checked*. That's a sensible default for a car's very first
 photo, but it also means every *subsequent* upload silently becomes
@@ -1614,10 +1610,7 @@ changing unexpectedly as more pictures get added. Defaulting to
 unchecked (except perhaps when it's the car's first image) would be
 safer.
 
-**Not yet wired up:** unlike `carRatingReview`, this component hasn't
-been added to `Car_Record_Page` (or anywhere) yet in this commit —
-`isExposed`/targets are configured correctly, but there's no flexipage
-change placing it.
+**Fixed — wired up.** Added to `Car_Record_Page`.
 
 **Test coverage:** `carImageManager.test.js` is another unfilled
 CLI-generated stub, same pattern as the rest of this batch.
