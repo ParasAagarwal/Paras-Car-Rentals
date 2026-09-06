@@ -1614,3 +1614,116 @@ safer.
 
 **Test coverage:** `carImageManager.test.js` is another unfilled
 CLI-generated stub, same pattern as the rest of this batch.
+
+## Car Hunt — multi-component search & booking experience
+
+**Requirement:** A three-panel search page (filter | results grid |
+detail card) letting a user filter available cars, select one to see
+full details/reviews, get a quick price estimate, or book directly —
+built as `carFilter` (LMS publisher), `carTileList` (Apex-backed
+results grid), `carTile` (reusable listing card), `carCard` (detail
+panel, LMS subscriber), `bookCarModal`, and two flow-wrapping estimate
+modals, composed onto the new `Car_Hunt` app page (`pageTemplate`,
+left/center/right) documented earlier.
+
+**Critical — the exact same availability bug from the customer-facing
+API is repeated here, in the primary search path.**
+`carTileListController.getCars`'s conflicting-booking check is:
+
+```sql
+WHERE Start_Date_Time__c >= :startDateTime AND End_Date_Time__c <= :endDateTime
+```
+
+This is the identical mistake documented for `CarAvailabilityRestApiService`
+several sessions ago: no `Status__c` filter at all (a `Cancelled` or
+`Closed` booking in the searched range still blocks the car), and a
+containment check instead of an overlap check (a car booked Jan 10–20
+still shows as available for a Jan 12–15 search, since the existing
+booking isn't contained *within* the search window). This codebase now
+has three independent implementations of "is this car free for these
+dates": the correct one in `BookingTriggerHandlerService.hasOverlap`
+(validation-rule enforcement), and two broken ones sharing this same
+flawed logic (the REST API, and now this — the actual Car Hunt grid,
+which is likely the primary way anyone browses for a car). Worth fixing
+in one place this time and having both `carTileListController` and
+`CarAvailabilityRestApiService` call it, rather than a third
+independent copy.
+
+**Bug — pickup location isn't actually validated as mandatory.**
+`carFilter.validateFilters()` only checks `startDate`/`endDate`; nothing
+enforces `pickupLocation`, despite the explicit requirement ("there
+should be a validation to mandatorily put the pickup location"). Softened
+in practice by `pickupLocation` defaulting to `"Delhi"` rather than
+blank, but if that picklist can ever be cleared, nothing stops a
+publish with no pickup location.
+
+**Bug — the wired `getCars` call fires with `filters: undefined` on
+first load, before any filter is ever applied.** `carTileList`
+declares `filters;` (uninitialized) and wires
+`@wire(getCars, { filters: '$filters' })` — LWC's wire service invokes
+this immediately on connection using whatever `filters` currently is,
+which is `undefined` until a `carFilter` message arrives. That
+serializes to `null` on the Apex side, and the very first line inside
+`getCars` that touches the parameter — `filters.searhKey` — would throw
+a null-pointer exception. The failure is invisible to the user today,
+purely by luck: `showInitialMessage` is `true` until a message arrives,
+so the placeholder covers the error rather than the (unreachable, in
+this state) `cars.error` branch. Still worth guarding — e.g. a getter
+that returns `null`/skips the call until `filters` is actually set —
+so the org isn't generating a real Apex exception on every single page
+load.
+
+**Bug — the "no results" message doesn't match the specified text.**
+The requirement gives an exact string, `"No cars available."`; the
+component shows `"No cars found for the selected criteria"` instead.
+Minor, but worth aligning since the wording was given verbatim.
+
+**Bug — no toast on a failed booking.** `bookCarModal.handleError` only
+`console.log`s the error; nothing calls `ShowToastEvent`. The
+requirement is explicit that the toast should confirm the outcome
+"whether the booking was successful **or if an error occurred**" — only
+the success half is implemented (and only by the *calling* component,
+after the modal closes). The user isn't left with literally nothing —
+`<lightning-messages>` still renders an inline SLDS error in the form —
+but that's not the specifically-required toast.
+
+**Worth cleaning up, not a bug:** `estimateBooking` (the `recordId`-named
+modal wrapper) is never actually used anywhere — only `estimateCarBooking`
+(the `carId`-named one, wired into `carTileList`) is referenced. The two
+are otherwise near-identical thin wrappers around the same
+`Estimate_your_Booking` flow. Looks like an earlier naming iteration
+left behind; worth deleting `estimateBooking` unless there's a planned
+second use for it.
+
+**What's done well:**
+- **Real reuse, not reimplementation.** `carCard` composes the already-built
+  `c-car-image-manager` (image gallery) and `c-car-rating-review`
+  (average rating + review list) rather than rebuilding either — exactly
+  the kind of composition that's been missing in a few other places this
+  project.
+- **The estimate modals genuinely reuse the existing flow.** Both wrap
+  `Estimate_your_Booking` via `lightning-flow`, passing `recordId` as a
+  flow input — matching the requirement's explicit "Functionality Reuse"
+  instruction precisely, with no pricing logic duplicated a third time.
+- **`bookCarModal` rides on existing automation for free.** Using
+  `lightning-record-edit-form`/`lightning-input-field` means the new
+  booking goes through the same before-save price calculation and every
+  validation rule documented earlier, without re-implementing any of it.
+- **No SOQL injection risk** in `carTileListController` despite the
+  dynamically assembled query — values are always passed through bind
+  variables (`:key`, `:pickupLocation`, etc.), never concatenated
+  directly into the query string; only which clauses are *included* is
+  dynamic.
+- **`carTile`'s three actions are correctly isolated** — the
+  click-to-select handler is on a wrapper `div` that's a sibling of (not
+  a parent of) the two action buttons, so clicking "Estimate Booking" or
+  "Book Now" doesn't also fire car selection.
+- The 350ms debounce matches the requirement's stated value exactly, and
+  the three-region page composition (filter/grid/card) matches the
+  provided mockup precisely.
+
+**Test coverage:** every new component's Jest test file
+(`carFilter`, `carTileList`, `carTile`, `carCard`, `bookCarModal`,
+`estimateBooking`, `estimateCarBooking`) is an unfilled CLI-generated
+stub — the same pattern flagged repeatedly across this project's LWC
+and Apex tests.
