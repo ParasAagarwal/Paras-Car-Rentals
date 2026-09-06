@@ -1,8 +1,13 @@
 # Car Rentals
 
-A personal Salesforce project implementing a car rental management data
-model — vehicle inventory, bookings, payments, reviews, coupons, and
-support cases — built as a standard Salesforce DX project.
+A personal Salesforce project implementing a car rental management
+system — vehicle inventory, bookings, payments, reviews, coupons, and
+support cases — spanning the full declarative and programmatic
+Salesforce toolset: custom objects and automation (Flow, validation
+rules, Apex triggers), a role/profile/sharing security model, a
+customer-facing REST API, an outbound external integration, scheduled
+batch jobs, and a multi-component Lightning Web Component app
+("Car Hunt") for searching and booking cars.
 
 ## Data Model
 
@@ -11,27 +16,31 @@ Core custom objects, plus extensions to standard `Contact` and `Case`:
 | Object | Purpose | Key relationships |
 |---|---|---|
 | **Car__c** | Vehicle inventory: make, model, year, rental rate, mileage limit, service dates, real-time availability | Master-Detail parent of `Car_Image__c`; looked up from `Booking__c`, `Case.Related_Car__c` |
-| **Booking__c** | Customer reservations: car, customer, rental period, status (Pending/Confirmed/Cancelled) | Lookup to `Car__c` and `Contact` (both required), `Coupon_Code__c` (optional, active coupons only); Master-Detail parent of `Payment_Transaction__c`; looked up from `Review__c`, `Case.Related_Booking__c` |
+| **Booking__c** | Customer reservations: car, customer, rental period, status (Pending → Confirmed → Started → Completed → Cancelled/Closed) | Lookup to `Car__c` and `Contact` (both required), `Coupon_Code__c` (optional, active coupons only); Master-Detail parent of `Payment_Transaction__c`; looked up from `Review__c`, `Case.Related_Booking__c` |
 | **Payment_Transaction__c** | Payment/refund/deposit ledger per booking | Master-Detail child of `Booking__c` |
 | **Car_Image__c** | Vehicle photos, with a primary-image flag | Master-Detail child of `Car__c` |
 | **Review__c** | Customer ratings/comments per booking | Lookup to `Booking__c` and `Contact`; looked up from `Case.Review_ID__c` |
 | **Coupon_Code__c** | Discount codes: expiry, usage limits, manager approval for large discounts | Looked up from `Booking__c` |
-| **LogEvent__c** | Technical log of Flow/Apex errors and warnings | Standalone |
-| **Contact** (standard) | Customer record, extended with `Total_Lifetime_Spending__c` and `Total_Number_Of_Booking__c` | |
-| **Case** (standard) | Support cases, extended with `Related_Booking__c`, `Related_Car__c`, `Review_ID__c`, `Resolution_Notes__c` | |
+| **LogEvent__c** | Durable log of Flow/Apex errors and warnings, fed by a platform event pipeline | Standalone |
+| **System_Thresholds__mdt** | Custom metadata holding admin-configurable business values (discount limits, deposit %, log retention, etc.) | Referenced by formulas, Flows, and Apex throughout |
+| **Contact** (standard) | Customer record, extended with `Total_Lifetime_Spending__c`, `Total_Number_Of_Booking__c`, `Email_Verified__c` | |
+| **Case** (standard) | Support cases, extended with `Related_Booking__c`, `Related_Car__c`, `Review_ID__c`, `Resolution_Notes__c`, and three category-specific Record Types | |
 
 `Total_Bookings_Value__c` (Car), `Total_Lifetime_Spending__c` /
-`Total_Number_Of_Booking__c` (Contact), and `Average_Rating__c` /
-`Current_Average__c` (Car) are plain editable fields, not native roll-up
-summaries — their parent relationships are Lookups rather than
-Master-Detail, so these are meant to be kept in sync by Flow/Apex.
+`Total_Number_Of_Booking__c` (Contact), and `Average_Rating__c` (Car)
+are plain editable fields, not native roll-up summaries — their parent
+relationships are Lookups rather than Master-Detail, so they're kept in
+sync by Apex triggers instead.
 
-Access is currently controlled by a single **Car On Rental** permission
-set (admin use).
+Access is controlled by a `Car Rental Representative` profile and a
+`Rental Manager Permissions` permission set, layered over a
+CEO → Supervisor → Representative Agent role hierarchy.
 
 See [docs/requirements-and-design.md](docs/requirements-and-design.md)
-for the business requirement behind each non-trivial feature and why it
-was built that way.
+for the business requirement behind every feature area and how it's
+built — data model rules, booking/payment automation, the security
+model, the trigger and logging framework, external integrations,
+scheduled jobs, and the Car Hunt search/booking experience.
 
 ## Prerequisites
 
