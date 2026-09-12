@@ -1,4 +1,4 @@
-# Car Rentals
+# Paras Car Rentals
 
 A personal Salesforce project built end-to-end on Salesforce DX: a car
 rental management system covering vehicle inventory, bookings, payments,
