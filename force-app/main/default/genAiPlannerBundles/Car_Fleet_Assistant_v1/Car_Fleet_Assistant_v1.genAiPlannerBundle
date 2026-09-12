@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiPlannerBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Helps representatives and managers get quick summaries and status information about cars in the fleet.</description>
+    <localTopicLinks>
+        <genAiPluginName>CarInformation_16jbm000002qPaf</genAiPluginName>
+    </localTopicLinks>
+    <localTopicLinks>
+        <genAiPluginName>agent_router_16jbm000002qPaf</genAiPluginName>
+    </localTopicLinks>
+    <localTopicLinks>
+        <genAiPluginName>off_topic_16jbm000002qPaf</genAiPluginName>
+    </localTopicLinks>
+    <localTopics>
+        <fullName>off_topic_16jbm000002qPaf</fullName>
+        <canEscalate>false</canEscalate>
+        <description>Redirect conversation to relevant topics when user request goes off-topic</description>
+        <developerName>off_topic_16jbm000002qPaf</developerName>
+        <genAiPluginInstructions>
+            <description>You are the Car Fleet Assistant for a car rental company.
+
+The user&apos;s current context is:
+Current App Name: {{state.currentAppName}}
+Current Object Name: {{state.currentObjectApiName}}
+Current Page Type: {{state.currentPageType}}
+Current Record ID: {{state.currentRecordId}}</description>
+            <developerName>instruction0_179bm000004VLnT</developerName>
+            <language>en_US</language>
+            <masterLabel>instruction0_179bm000004VLnT</masterLabel>
+            <sortOrder>1</sortOrder>
+        </genAiPluginInstructions>
+        <language>en_US</language>
+        <localDeveloperName>off_topic</localDeveloperName>
+        <masterLabel>Off Topic</masterLabel>
+        <pluginType>Topic</pluginType>
+    </localTopics>
+    <localTopics>
+        <fullName>agent_router_16jbm000002qPaf</fullName>
+        <canEscalate>false</canEscalate>
+        <description>Welcome the user and determine the appropriate subagent based on user input</description>
+        <developerName>agent_router_16jbm000002qPaf</developerName>
+        <genAiPluginInstructions>
+            <description>You are the Car Fleet Assistant for a car rental company.
+
+The user&apos;s current context is:
+Current App Name: {!@variables.currentAppName}
+Current Object Name: {!@variables.currentObjectApiName}
+Current Page Type: {!@variables.currentPageType}
+Current Record ID: {!@variables.currentRecordId}
+
+{{state.AgentScriptInternal_agent_instructions}}</description>
+            <developerName>instruction0_179bm000004VLnR</developerName>
+            <language>en_US</language>
+            <masterLabel>instruction0_179bm000004VLnR</masterLabel>
+            <sortOrder>1</sortOrder>
+        </genAiPluginInstructions>
+        <language>en_US</language>
+        <localDeveloperName>agent_router</localDeveloperName>
+        <masterLabel>Agent Router</masterLabel>
+        <pluginType>Topic</pluginType>
+    </localTopics>
+    <localTopics>
+        <fullName>CarInformation_16jbm000002qPaf</fullName>
+        <canEscalate>false</canEscalate>
+        <description>Use this subagent when a user asks about a specific car&apos;s condition, status, availability, or wants a summary/overview of it.</description>
+        <developerName>CarInformation_16jbm000002qPaf</developerName>
+        <genAiPluginInstructions>
+            <description>You are the Car Fleet Assistant for a car rental company.
+
+The user&apos;s current context is:
+Current App Name: {{state.currentAppName}}
+Current Object Name: {{state.currentObjectApiName}}
+Current Page Type: {{state.currentPageType}}
+Current Record ID: {{state.currentRecordId}}</description>
+            <developerName>instruction0_179bm000004VLnS</developerName>
+            <language>en_US</language>
+            <masterLabel>instruction0_179bm000004VLnS</masterLabel>
+            <sortOrder>1</sortOrder>
+        </genAiPluginInstructions>
+        <language>en_US</language>
+        <localActionLinks>
+            <functionName>UpdateCarSummaryField_179bm000004VLnS</functionName>
+        </localActionLinks>
+        <localActionLinks>
+            <functionName>GetCarSummary_179bm000004VLnS</functionName>
+        </localActionLinks>
+        <localActions>
+            <fullName>GetCarSummary_179bm000004VLnS</fullName>
+            <description>Generates a concise summary of a Car record, including availability, condition, ratings, and recent activity such as bookings or open cases. Use this when the user asks to summarize, review, or get an overview of a specific car.</description>
+            <developerName>GetCarSummary_179bm000004VLnS</developerName>
+            <invocationTarget>Car_Summary</invocationTarget>
+            <invocationTargetType>generatePromptResponse</invocationTargetType>
+            <isConfirmationRequired>false</isConfirmationRequired>
+            <isIncludeInProgressIndicator>true</isIncludeInProgressIndicator>
+            <localDeveloperName>GetCarSummary</localDeveloperName>
+            <masterLabel>Car Summary</masterLabel>
+            <progressIndicatorMessage>Summarizing car record…</progressIndicatorMessage>
+            <source>Car_Summary</source>
+        </localActions>
+        <localActions>
+            <fullName>UpdateCarSummaryField_179bm000004VLnS</fullName>
+            <description>Writes the generated summary to the Car record&apos;s Car_Summary__c field.</description>
+            <developerName>UpdateCarSummaryField_179bm000004VLnS</developerName>
+            <invocationTarget>Update_Car_Summary_Field</invocationTarget>
+            <invocationTargetType>flow</invocationTargetType>
+            <isConfirmationRequired>false</isConfirmationRequired>
+            <isIncludeInProgressIndicator>false</isIncludeInProgressIndicator>
+            <localDeveloperName>UpdateCarSummaryField</localDeveloperName>
+            <masterLabel>UpdateCarSummaryField</masterLabel>
+        </localActions>
+        <localDeveloperName>CarInformation</localDeveloperName>
+        <masterLabel>Car Information</masterLabel>
+        <pluginType>Topic</pluginType>
+    </localTopics>
+    <masterLabel>Car Fleet Assistant</masterLabel>
+    <plannerType>Atlas__ConcurrentMultiAgentOrchestration</plannerType>
+</GenAiPlannerBundle>

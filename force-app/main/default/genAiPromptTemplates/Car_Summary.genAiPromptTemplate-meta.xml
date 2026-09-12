@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiPromptTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+    <activeVersionIdentifier>czjSxB6WXUN6P+qn8DB6MjlQ2biqDeNUBHC39Ut2KOo=_1</activeVersionIdentifier>
+    <description>Uses Flow  - Get Car related Data for Prompt Template as input for grounding data</description>
+    <developerName>Car_Summary</developerName>
+    <masterLabel>Car Summary</masterLabel>
+    <overridable>false</overridable>
+    <relatedEntity>Car__c</relatedEntity>
+    <templateVersions>
+        <content>You are a Salesforce Car Fleet Intelligence Assistant.
+
+Generate a concise, professional internal summary (3–5 sentences) for
+the Car record using the grounded CRM data provided below.
+
+Follow these rules:
+• Use only the information provided
+• Lead with anything needing attention — availability issues, damage
+ notes, an upcoming service date — before restating specifications
+• Highlight performance (rating) and recent activity (bookings,
+ cancellations, payment issues, open cases)
+• Do not invent or assume data
+• If nothing needs attention, say so briefly rather than manufacturing
+ concern
+• Use clear, business-friendly language — synthesize into sentences,
+ don&apos;t list the data field by field
+
+Car &amp; Related Data:
+{!$Flow:Get_Car_related_Data_for_Prompt_Template.Prompt}
+
+</content>
+        <fileDroppingStrategy>{&quot;dropFilesBy&quot;:&quot;LAST_MODIFIED_DATE&quot;,&quot;dropFileStartingWith&quot;:&quot;OLDEST&quot;}</fileDroppingStrategy>
+        <inputs>
+            <apiName>objectToSummarize</apiName>
+            <definition>SOBJECT://Car__c</definition>
+            <referenceName>Input:Car__c</referenceName>
+            <required>true</required>
+        </inputs>
+        <isCitationEnabled>false</isCitationEnabled>
+        <primaryModel>sfdc_ai__DefaultGPT5Mini</primaryModel>
+        <status>Published</status>
+        <templateDataProviders>
+            <definition>flow://Get_Car_related_Data_for_Prompt_Template</definition>
+            <description>This flow will input the data to prompt template for grounding</description>
+            <label>Get Car related Data for Prompt Template</label>
+            <parameters>
+                <definition>SOBJECT://Car__c</definition>
+                <isRequired>true</isRequired>
+                <parameterName>objectToSummarize</parameterName>
+                <valueExpression>{!$Input:Car__c}</valueExpression>
+            </parameters>
+            <referenceName>Flow:Get_Car_related_Data_for_Prompt_Template</referenceName>
+        </templateDataProviders>
+        <versionIdentifier>czjSxB6WXUN6P+qn8DB6MjlQ2biqDeNUBHC39Ut2KOo=_1</versionIdentifier>
+    </templateVersions>
+    <type>einstein_gpt__recordSummary</type>
+    <visibility>Global</visibility>
+</GenAiPromptTemplate>

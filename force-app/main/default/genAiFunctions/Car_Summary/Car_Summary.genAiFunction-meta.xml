@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiFunction xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Uses Flow  - Get Car related Data for Prompt Template as input for grounding data</description>
+    <developerName>Car_Summary</developerName>
+    <invocationTarget>Car_Summary</invocationTarget>
+    <invocationTargetType>generatePromptResponse</invocationTargetType>
+    <isConfirmationRequired>false</isConfirmationRequired>
+    <isIncludeInProgressIndicator>true</isIncludeInProgressIndicator>
+    <localDeveloperName>Car_Summary</localDeveloperName>
+    <masterLabel>Car Summary</masterLabel>
+    <progressIndicatorMessage>Summarizing car record…</progressIndicatorMessage>
+</GenAiFunction>

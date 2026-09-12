@@ -436,3 +436,63 @@ composed onto a new `Car Hunt` app page:
 - **`estimateCarBooking`**: a modal embedding the existing
   `Estimate_your_Booking` flow for a quick, non-committal price check
   before booking.
+
+## 12. Car Fleet Assistant — Agentforce showcase
+
+Managers and reps have to open a car record, then cross-reference recent
+bookings, cancellations, payment issues, and open cases to judge whether
+that car actually needs attention. This section adds an Agentforce agent
+that reads all of that on request and writes a standing summary back onto
+the record, so the judgment call is a sentence instead of a five-tab
+lookup.
+
+This build deliberately exercises the full Agentforce toolset — Agent
+Script authoring, a prompt-template-backed action, a flow-based grounding
+source, and a flow-based write-back action — in one agent. It is one of
+several valid ways to wire this up (a pure Flex-template build, or a
+Field Generation button, would also work), chosen here specifically to
+showcase Agent Script and the prompt-template/grounding-flow pattern
+together, not as the only or final architecture for this capability.
+
+**Grounding — `Get_Car_related_Data_for_Prompt_Template` (Flow, Template-Triggered
+Prompt Flow):** Takes the Car record as a capability input, then adds prompt
+instructions covering the car's own specs (make, model, year, family,
+transmission, fuel type, seats, daily rate, pickup location, availability
+status, damage notes, average rating, next service date), loops the five
+most recent bookings (status, dates, customer, payment status, final
+price, cancellation reason), and loops the five most recent related cases
+(status, type, priority, subject, resolution notes). Cases are queried
+directly off the car; reviews are not queried separately since the car's
+existing `Average_Rating__c` roll-up already covers that signal, and
+Flow Builder's Get Records doesn't support filtering `Review__c` two hops
+through `Booking__r.Car__c` in one step.
+
+**Prompt template — `Car_Summary` (Record Summary type, `Car__c`):**
+Published prompt template whose instructions ask for a 3–5 sentence
+internal summary that leads with anything needing attention (availability,
+damage, upcoming service) before specs, calls out rating and recent
+activity, and avoids inventing data. It pulls the grounding flow's output
+in with `{!$Flow:Get_Car_related_Data_for_Prompt_Template.Prompt}`. The
+`Car_Summary` GenAiFunction generated from it is what the agent actually
+calls; its output is deliberately not user-displayable since it feeds the
+write-back step rather than a chat bubble.
+
+**Write-back — `Update_Car_Summary_Field` (Flow, Autolaunched):** Takes a
+record ID and summary text, updates `Car_Summary__c` (read-only, agent-
+populated long text area on Car), and returns a success/failure flag
+along a fault path.
+
+**Agent — `Car_Fleet_Assistant_v1` (GenAiPlannerBundle), authored as Agent
+Script:** A router topic sends car-related questions to a `CarInformation`
+subagent, which chains both actions in one reasoning step: call
+`GetCarSummary` (`generatePromptResponse://Car_Summary`), capture its
+`promptResponse` into a `carSummaryText` variable, then immediately run
+`UpdateCarSummaryField` (`flow://Update_Car_Summary_Field`) with that
+text and the current record ID — so a single "summarize this car" request
+both answers the user and persists the summary. An `off_topic` subagent
+guards against unrelated requests.
+
+**Access:** Agent access is granted through `Rental_Manager_Permissions`
+only (`agentAccesses` → `Car_Fleet_Assistant`, enabled), so the assistant
+is available to Managers and Admins and not to the base Representative
+Agent profile.

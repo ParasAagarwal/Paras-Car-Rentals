@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>67.0</apiVersion>
+    <areMetricsLoggedToDataCloud>false</areMetricsLoggedToDataCloud>
+    <assignments>
+        <description>Adds instructions for bookings related to the car</description>
+        <name>Instruction_for_Booking</name>
+        <elementSubtype>AddPromptInstructions</elementSubtype>
+        <label>Instruction for Booking</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Output.Prompt</assignToReference>
+            <operator>Add</operator>
+            <value>
+                <stringValue>Booking: {!Loop_Bookings.Status__c}, {!Loop_Bookings.Start_Date_Time__c} to {!Loop_Bookings.End_Date_Time__c}, Customer: {!Loop_Bookings.Customer__r.Name}, Payment Status: {!Loop_Bookings.Payment_Status__c}, Final Price: {!Loop_Bookings.Final_Booking_Price__c}, Cancellation Reason: {!Loop_Bookings.Cancellation_Reason__c}.
+</stringValue>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Loop_Bookings</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <description>These are details from Car object to directly use inside instruction</description>
+        <name>Instruction_for_Car_Details</name>
+        <elementSubtype>AddPromptInstructions</elementSubtype>
+        <label>Instruction for Car Details</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Output.Prompt</assignToReference>
+            <operator>Add</operator>
+            <value>
+                <stringValue>Car: {!$Input.objectToSummarize.Make__c} {!$Input.objectToSummarize.Model__c} ({!$Input.objectToSummarize.Year__c}), {!$Input.objectToSummarize.Car_Family__c} class.
+Transmission: {!$Input.objectToSummarize.Transmission_Type__c}, Fuel Type: {!$Input.objectToSummarize.Fuel_Type__c}, Seats: {!$Input.objectToSummarize.Number_of_Seats__c}.
+Rate: {!$Input.objectToSummarize.Rental_Rate_Per_Day__c}/day, Pickup Location: {!$Input.objectToSummarize.PickupLocation__c}.
+Availability Status: {!$Input.objectToSummarize.Availability_Status__c}.
+Damage Notes: {!$Input.objectToSummarize.Damage_Notes__c}.
+Average Rating: {!$Input.objectToSummarize.Average_Rating__c}.
+Next Service Date: {!$Input.objectToSummarize.Next_Service_Date__c}.
+</stringValue>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Get_Recent_Bookings</targetReference>
+        </connector>
+    </assignments>
+    <assignments>
+        <name>Instruction_for_Case</name>
+        <elementSubtype>AddPromptInstructions</elementSubtype>
+        <label>Instruction for Case</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignmentItems>
+            <assignToReference>$Output.Prompt</assignToReference>
+            <operator>Add</operator>
+            <value>
+                <stringValue>Case: {!Loop_Cases.Status}, Type: {!Loop_Cases.Type}, Priority: {!Loop_Cases.Priority}, Subject: {!Loop_Cases.Subject}, Resolution: {!Loop_Cases.Resolution_Notes__c}.
+
+</stringValue>
+            </value>
+        </assignmentItems>
+        <connector>
+            <targetReference>Loop_Cases</targetReference>
+        </connector>
+    </assignments>
+    <description>This flow will input the data to prompt template for grounding</description>
+    <environments>Default</environments>
+    <interviewLabel>Car Object Template {!$Flow.CurrentDateTime}</interviewLabel>
+    <label>Get Car related Data for Prompt Template</label>
+    <loops>
+        <name>Loop_Bookings</name>
+        <label>Loop Bookings</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <collectionReference>Get_Recent_Bookings</collectionReference>
+        <iterationOrder>Asc</iterationOrder>
+        <nextValueConnector>
+            <targetReference>Instruction_for_Booking</targetReference>
+        </nextValueConnector>
+        <noMoreValuesConnector>
+            <targetReference>Loop_Cases</targetReference>
+        </noMoreValuesConnector>
+    </loops>
+    <loops>
+        <name>Loop_Cases</name>
+        <label>Loop Cases</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <collectionReference>Get_Related_Cases</collectionReference>
+        <iterationOrder>Asc</iterationOrder>
+        <nextValueConnector>
+            <targetReference>Instruction_for_Case</targetReference>
+        </nextValueConnector>
+    </loops>
+    <processMetadataValues>
+        <name>BuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>CanvasMode</name>
+        <value>
+            <stringValue>AUTO_LAYOUT_CANVAS</stringValue>
+        </value>
+    </processMetadataValues>
+    <processMetadataValues>
+        <name>OriginBuilderType</name>
+        <value>
+            <stringValue>LightningFlowBuilder</stringValue>
+        </value>
+    </processMetadataValues>
+    <processType>PromptFlow</processType>
+    <recordLookups>
+        <name>Get_Recent_Bookings</name>
+        <label>Get Recent Bookings</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Get_Related_Cases</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Car__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Input.objectToSummarize.Id</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
+        <limit>
+            <numberValue>5.0</numberValue>
+        </limit>
+        <object>Booking__c</object>
+        <sortField>Start_Date_Time__c</sortField>
+        <sortOrder>Desc</sortOrder>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <recordLookups>
+        <name>Get_Related_Cases</name>
+        <label>Get Related Cases</label>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <assignNullValuesIfNoRecordsFound>false</assignNullValuesIfNoRecordsFound>
+        <connector>
+            <targetReference>Loop_Bookings</targetReference>
+        </connector>
+        <filterLogic>and</filterLogic>
+        <filters>
+            <field>Related_Car__c</field>
+            <operator>EqualTo</operator>
+            <value>
+                <elementReference>$Input.objectToSummarize.Id</elementReference>
+            </value>
+        </filters>
+        <getFirstRecordOnly>false</getFirstRecordOnly>
+        <limit>
+            <numberValue>5.0</numberValue>
+        </limit>
+        <object>Case</object>
+        <sortField>CreatedDate</sortField>
+        <sortOrder>Desc</sortOrder>
+        <storeOutputAutomatically>true</storeOutputAutomatically>
+    </recordLookups>
+    <start>
+        <locationX>0</locationX>
+        <locationY>0</locationY>
+        <capabilityTypes>
+            <name>PromptTemplateType://einstein_gpt__recordSummary</name>
+            <capabilityName>PromptTemplateType://einstein_gpt__recordSummary</capabilityName>
+            <inputs>
+                <name>objectToSummarize</name>
+                <capabilityInputName>objectToSummarize</capabilityInputName>
+                <dataType>SOBJECT://Car__c</dataType>
+                <isCollection>false</isCollection>
+            </inputs>
+        </capabilityTypes>
+        <connector>
+            <targetReference>Instruction_for_Car_Details</targetReference>
+        </connector>
+        <triggerType>Capability</triggerType>
+    </start>
+    <status>Active</status>
+</Flow>

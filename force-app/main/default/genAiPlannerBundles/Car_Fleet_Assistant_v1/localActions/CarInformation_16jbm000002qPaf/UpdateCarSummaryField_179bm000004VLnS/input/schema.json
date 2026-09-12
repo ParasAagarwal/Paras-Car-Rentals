@@ -1,0 +1,21 @@
+{
+  "required" : [ "recordId", "summaryText" ],
+  "unevaluatedProperties" : false,
+  "properties" : {
+    "recordId" : {
+      "title" : "recordId",
+      "description" : "Car Record to update Car_Summary__c field on",
+      "lightning:type" : "lightning__textType",
+      "lightning:isPII" : false,
+      "copilotAction:isUserInput" : false
+    },
+    "summaryText" : {
+      "title" : "summaryText",
+      "description" : "Response from Get Car Summary action to populate on Car_Summary__c field on Car",
+      "lightning:type" : "lightning__textType",
+      "lightning:isPII" : false,
+      "copilotAction:isUserInput" : false
+    }
+  },
+  "lightning:type" : "lightning__objectType"
+}
