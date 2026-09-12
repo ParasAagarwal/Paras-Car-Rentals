@@ -1,13 +1,53 @@
 # Car Rentals
 
-A personal Salesforce project implementing a car rental management
-system — vehicle inventory, bookings, payments, reviews, coupons, and
-support cases — spanning the full declarative and programmatic
-Salesforce toolset: custom objects and automation (Flow, validation
-rules, Apex triggers), a role/profile/sharing security model, a
-customer-facing REST API, an outbound external integration, scheduled
-batch jobs, and a multi-component Lightning Web Component app
-("Car Hunt") for searching and booking cars.
+A personal Salesforce project built end-to-end on Salesforce DX: a car
+rental management system covering vehicle inventory, bookings, payments,
+reviews, coupons, and support cases — with a full declarative and
+programmatic build (custom objects and automation, Apex, a security
+model, integrations, a multi-component LWC app, and an Agentforce agent)
+all built and retrieved from a real org.
+
+## What's in it
+
+- **Vehicle & booking lifecycle** — cars, bookings, and payments modeled
+  with Flow- and Apex-driven business rules: availability checks, overlap
+  prevention, pricing calculation, mileage limits, and a booking status
+  lifecycle from Pending through Completed/Cancelled.
+- **Coupons & reviews** — discount codes with expiry, usage limits, and
+  manager approval above a configurable threshold; post-booking customer
+  reviews feeding a rolled-up car rating.
+- **Case management** — support cases categorized by record type
+  (billing, vehicle issue, general), linked back to the originating
+  booking, car, or review.
+- **Configurable thresholds** — business values (discount limits, deposit
+  percentage, log retention, etc.) live in a custom metadata type instead
+  of being hardcoded, so admins can tune them without a deploy.
+- **Security model** — a dedicated profile and permission set layered
+  over a CEO → Supervisor → Representative Agent role hierarchy, with
+  object-level sharing (private/public/controlled-by-parent) and
+  criteria-based sharing rules matched to how sensitive each object is.
+- **Trigger & logging framework** — built on Salesforce's open-source
+  `apex-recipes` pattern: metadata-driven trigger handlers with an
+  admin-configurable enable/disable switch per object, and a durable
+  platform-event-backed log of Flow/Apex errors and warnings.
+- **Scheduled maintenance & external integrations** — batch jobs for
+  recurring cleanup/status maintenance, plus an outbound integration to
+  an external service for email reputation checks.
+- **Car Hunt** — a multi-component Lightning Web Component app (filter
+  panel, results grid, detail card, booking and estimate modals) for
+  searching and booking a car entirely from a custom Lightning app page.
+- **Car Fleet Assistant (Agentforce)** — an Agentforce agent, authored
+  directly in Agent Script, that reads a car's specs plus its recent
+  bookings and cases, generates a plain-language status summary, and
+  writes it back onto the record — chaining a prompt-template action and
+  a flow-based write-back action in one agent turn. Restricted to
+  Managers and Admins, and built as a deliberate showcase of Agent
+  Script authoring, prompt templates, and flow-based grounding/actions
+  together (one of several valid ways to build this capability, not the
+  only one).
+
+See [docs/requirements-and-design.md](docs/requirements-and-design.md)
+for the full requirement-by-requirement breakdown of every area above.
 
 ## Data Model
 
@@ -36,61 +76,27 @@ Access is controlled by a `Car Rental Representative` profile and a
 `Rental Manager Permissions` permission set, layered over a
 CEO → Supervisor → Representative Agent role hierarchy.
 
-See [docs/requirements-and-design.md](docs/requirements-and-design.md)
-for the business requirement behind every feature area and how it's
-built — data model rules, booking/payment automation, the security
-model, the trigger and logging framework, external integrations,
-scheduled jobs, and the Car Hunt search/booking experience.
+## Project Structure
+
+Standard Salesforce DX layout:
+
+- **`force-app/main/default/`** — all metadata source (objects, flows,
+  Apex classes/triggers, LWC, permission sets, prompt templates, and the
+  Agentforce agent bundle).
+- **`docs/requirements-and-design.md`** — the requirement behind every
+  feature area and how it's built.
+- **`sfdx-project.json`** — project manifest (package directories,
+  source API version).
 
 ## Prerequisites
 
-Before you start, make sure you have:
-
-- **Salesforce CLI** - Download from [developer.salesforce.com/tools/salesforcecli](https://developer.salesforce.com/tools/salesforcecli). See [Install Salesforce CLI](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_install_cli.htm) for details.
-- **VS Code with Salesforce Extension Pack** - See [Installation Instructions](https://developer.salesforce.com/docs/platform/sfvscode-extensions/guide/install.html) for details. Includes the Agentforce Vibes extension.
-- **A development org** - Sign up for a free Developer Edition org [here](https://developer.salesforce.com/signup).
-- **Dev Hub enabled** (optional, required to create scratch orgs) - You can enable Dev Hub in your development org under Setup > Dev Hub.  See [Provide Developers Access to Salesforce DX Tools](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_setup_dx_tools.htm).
-
-## Project Structure
-
-Your DX project follows this structure:
-
-- **`force-app/main/default/`** - Your metadata source files live in this default package directory. You can configure additional package directories in the `sfdx-project.json` file.
-- **`config/`** - Scratch org definitions and project settings
-- **`scripts/`** - Automation scripts for common tasks
-- **`sfdx-project.json`** - Project manifest that defines package directories, namespace, API version, and other project-level settings
-
-See [Salesforce DX Project Configuration](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_ws_config.htm).
-
-## Get Started
-
-Ready to start developing? The [Get Started with Salesforce DX](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_get_started_dx.htm) guide walks you through your first project, from creating a scratch org to creating a simple Apex class or LWC to deploying your code to a sandbox.
+- **Salesforce CLI** — [developer.salesforce.com/tools/salesforcecli](https://developer.salesforce.com/tools/salesforcecli)
+- **VS Code with Salesforce Extension Pack** — [install guide](https://developer.salesforce.com/docs/platform/sfvscode-extensions/guide/install.html)
+- **A Salesforce org** — a free Developer Edition org works: [sign up here](https://developer.salesforce.com/signup)
 
 ## Common Salesforce CLI Commands
 
-Here are common CLI commands that you'll use the most:
-
-- `sf org login web`: Authorize an org
-- `sf org open`: Open your org in a browser
-- `sf org create scratch`: Create a scratch org
-- `sf project deploy start`: Deploy metadata to your org
-- `sf project retrieve start`: Retrieve metadata from your org
-- `sf template generate <artifact>`: Scaffold new components, such as Apex classes and triggers, LWC components, Lightning apps, and more
-- `sf apex <command>`: Run Apex tests, run anonymous Apex blocks, and view logs
-- `sf data <command>`: Work with test data
-- `sf alias <command>`: Manage org aliases
-- `sf config <command>`: Configure CLI settings
-
-## Use Agentforce Vibes to Build Lightning Apps
-
-Transform your ideas into custom Lightning apps that extend CRM workflows directly in Lightning Experience. Through natural conversations with Agentforce Vibes, implement custom objects and fields, complex business logic, and dynamic UI components. See [Build a Lightning App Using Agentforce Vibes](https://developer.salesforce.com/docs/platform/einstein-for-devs/guide/lexapp-overview.html).
-
-## Additional Resources
-
-- [Agentforce Vibes Developer Guide](https://developer.salesforce.com/docs/platform/einstein-for-devs/guide/einstein-overview.html)
-- [Salesforce CLI Installation Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_intro.htm)
-- [Salesforce DX Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/)
-- [Salesforce CLI Command Reference](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/)
-- [Salesforce CLI Plugin Development Guide](https://developer.salesforce.com/docs/platform/salesforce-cli-plugin/guide/conceptual-overview.html)
-- [Salesforce VS Code Extensions Documentation](https://developer.salesforce.com/tools/vscode/)
-
+- `sf org login web` — Authorize an org
+- `sf project deploy start` — Deploy metadata to your org
+- `sf project retrieve start` — Retrieve metadata from your org
+- `sf apex run` / `sf apex tail log` — Run anonymous Apex / tail debug logs
